@@ -1,0 +1,1070 @@
+// Wire protocol for driving a `monty subprocess` child process.
+//
+// Transport: each message is framed as a 4-byte unsigned little-endian length
+// prefix followed by the protobuf-encoded bytes, written to the child's stdin
+// (`ParentRequest`) and read from its stdout (`ChildEvent`). stderr carries free-form
+// diagnostics only.
+//
+// The protocol is a strict alternation: the parent writes exactly one
+// `ParentRequest`; the child replies with zero or more streamed `Print` events
+// followed by exactly one turn-ending event. There is no multiplexing, so a
+// parent can be implemented with a single blocking read loop in any language.
+//
+// Evolution rules: the schema carries its own version, independent of the
+// monty package version. A parent declares it in `Configure.protocol_version`
+// and the child rejects anything outside the range it serves
+// (`MIN_SUPPORTED_PROTOCOL_VERSION..=PROTOCOL_VERSION` in `monty-proto`).
+// Prefer additive changes (fresh tag numbers, `reserved` removals) so a
+// separately-deployed parent has a migration window; a change an older peer
+// could mis-read needs a `PROTOCOL_VERSION` bump instead. A field the peer must
+// act on counts as mis-read even when the change is additive, in both
+// directions: an older child ignores a limit the parent set and the parent
+// never learns, and an older parent keeps sending a limit this build no longer
+// reads.
+
+syntax = "proto3";
+
+package monty.v1;
+
+// Empty placeholder for valueless oneof arms. Defined locally (rather than
+// importing google.protobuf.Empty) so non-Rust decoders need nothing beyond
+// this single file.
+message Unit {}
+
+// ============================================================================
+// Values
+// ============================================================================
+
+// Python values cross the boundary as one node arena per message: containers
+// hold the indexes of their children, so a sub-object referenced twice is one
+// node, and the carrying message names its roots by index. Nodes are in
+// post-order (every child index is lower than its holder's), so receivers
+// build values in one forward pass; a reference back to an enclosing
+// container is a `cycle` leaf. Mirrors monty's `MontyGraph`.
+message Arena {
+  // The sender's node count, so a receiver can reserve the arena once. A
+  // hint only: receivers cap it by the message size and charge it against
+  // their decode budget before allocating.
+  uint32 node_count = 1;
+  repeated MontyNode nodes = 2;
+}
+
+// One node of an `Arena`. Leaf arms carry the value; container arms carry
+// the indexes of their children.
+//
+// `repr` and `cycle` are OUTPUT-ONLY: the child may emit them (e.g. inside a
+// `Complete` value) but rejects them as inputs.
+message MontyNode {
+  oneof kind {
+    Unit ellipsis = 1;
+    Unit none = 2;
+    Unit not_implemented = 3;
+    bool boolean = 4;
+    // Python int fitting in 64 bits.
+    sint64 int = 5;
+    // Python int wider than 64 bits.
+    BigInt bigint = 6;
+    double float = 7;
+    string str = 8;
+    bytes bytes = 9;
+    // A uuid.UUID value. Declared so the tag is settled, but NOT YET
+    // IMPLEMENTED: monty has no uuid module, so neither end produces or
+    // accepts this arm (conversion to a domain node rejects it).
+    Uuid uuid = 10;
+    Indexes list = 11;
+    Indexes tuple = 12;
+    NamedTupleNode named_tuple = 13;
+    NodePairs dict = 14;
+    Indexes set = 15;
+    Indexes frozen_set = 16;
+    Date date = 17;
+    Time time = 18;
+    DateTime datetime = 19;
+    TimeDelta timedelta = 20;
+    TimeZone timezone = 21;
+    // A simple exception VALUE (no traceback) — e.g. an exception stored in a
+    // variable. Errors that terminate execution use `RaisedException` instead.
+    Exception exception = 22;
+    // A Python type object — builtin, sandbox class, or host class. A class
+    // is a node of its own, shared by every instance of it in the arena.
+    Type type = 23;
+    ClassInstanceNode class_instance = 24;
+    Function function = 25;
+    // A builtin function, named by its Python name, e.g. "len", "print".
+    string builtin_function = 26;
+    // A pathlib.Path value (always a virtual POSIX path, never a host path).
+    string path = 27;
+    FileHandle file_handle = 28;
+    // OUTPUT-ONLY fallback: repr() of a value with no other representation.
+    string repr = 29;
+    // OUTPUT-ONLY: a reference back to a container enclosing this node, as
+    // the placeholder its repr shows ("[...]", "(...)", "{...}" or "...").
+    string cycle = 30;
+    Complex complex = 31;
+  }
+}
+
+// Indexes of a container's children (list, tuple, set, frozenset items).
+message Indexes {
+  repeated uint32 items = 1;
+}
+
+// One key/value entry as node indexes. Used for dicts, attrs and kwargs:
+// proto maps cannot have message keys and do not preserve order, while
+// Python dicts allow arbitrary hashable keys and are insertion-ordered.
+message NodePair {
+  uint32 key = 1;
+  uint32 value = 2;
+}
+
+message NodePairs {
+  repeated NodePair pairs = 1;
+}
+
+// Arbitrary-precision integer as sign + big-endian magnitude. Exact and O(n);
+// JS decode is `(negative ? -1n : 1n) * BigInt('0x' + hex(magnitude))`.
+message BigInt {
+  bool negative = 1;
+  bytes magnitude = 2;
+}
+
+// A Python complex as its two float parts. Both are always present: a plain
+// `double` omits its default on the wire, which would turn `-0.0` into `0.0`.
+message Complex {
+  optional double real = 1;
+  optional double imag = 2;
+}
+
+message NamedTupleNode {
+  // Type name used in repr, e.g. "os.stat_result".
+  string type_name = 1;
+  // Attribute names, one per value.
+  repeated string field_names = 2;
+  // Indexes of the values, one per field name.
+  repeated uint32 values = 3;
+}
+
+message Date {
+  // Gregorian year in 1..=9999.
+  int32 year = 1;
+  // 1..=12.
+  uint32 month = 2;
+  uint32 day = 3;
+}
+
+message DateTime {
+  int32 year = 1;
+  uint32 month = 2;
+  uint32 day = 3;
+  uint32 hour = 4;
+  uint32 minute = 5;
+  uint32 second = 6;
+  // 0..=999999.
+  uint32 microsecond = 7;
+  // Fixed UTC offset for aware datetimes; absent for naive values.
+  optional int32 offset_seconds = 8;
+  // Optional timezone name; only valid when offset_seconds is set.
+  optional string timezone_name = 9;
+}
+
+message Time {
+  // 0..=23.
+  uint32 hour = 1;
+  // 0..=59.
+  uint32 minute = 2;
+  // 0..=59.
+  uint32 second = 3;
+  // 0..=999999.
+  uint32 microsecond = 4;
+  // Fixed UTC offset for aware times; absent for naive values.
+  optional int32 offset_seconds = 5;
+  // Optional timezone name; only valid when offset_seconds is set.
+  optional string timezone_name = 6;
+  // Disambiguates a repeated wall clock, 0 or 1. Carried so a time does not
+  // silently lose the flag crossing the boundary; monty never interprets it.
+  uint32 fold = 7;
+}
+
+message TimeDelta {
+  int32 days = 1;
+  // Normalized to 0..86400.
+  int32 seconds = 2;
+  // Normalized to 0..1000000.
+  int32 microseconds = 3;
+}
+
+message TimeZone {
+  int32 offset_seconds = 1;
+  optional string name = 2;
+}
+
+// A simple exception value: type name (e.g. "ValueError") + optional single
+// string argument.
+message Exception {
+  string exc_type = 1;
+  optional string arg = 2;
+}
+
+message FileHandle {
+  // Virtual (sandbox) path — never a host path.
+  string path = 1;
+  // Canonical Python open() mode string: one of r, rb, r+, rb+, w, wb, w+,
+  // wb+, a, ab, a+, ab+.
+  string mode = 2;
+  // Char index (text mode) or byte index (binary mode).
+  uint64 position = 3;
+}
+
+// A 16-byte UUID (uuid4). Exactly 16 bytes; validated on decode. Class and
+// instance ids are generated by whichever side defined the object, so they never
+// encode a memory address and cannot be reused the way CPython reuses `id()`.
+message Uuid {
+  bytes data = 1;
+}
+
+// Where a `Type` comes from — drives id presence and input validation.
+enum TypeOrigin {
+  // Rejected on decode.
+  TYPE_ORIGIN_UNSPECIFIED = 0;
+  // `name` must parse as a known builtin type name ("int", "ValueError");
+  // valid as an execution input. `id` must be absent. Kept distinct from
+  // SANDBOX so a sandbox class shadowing a builtin name ("int") cannot be
+  // confused with the builtin type.
+  TYPE_ORIGIN_BUILTIN = 1;
+  // A sandbox-defined class; `id` required. Accepted by the decoder but
+  // rejected as an execution input (the class binding cannot be
+  // reconstructed host-side).
+  TYPE_ORIGIN_SANDBOX = 2;
+  // A host-defined class; `id` required.
+  TYPE_ORIGIN_HOST = 3;
+}
+
+// A Python type object crossing the sandbox boundary.
+message Type {
+  // Python-visible name: builtin Display name ("int", "datetime.datetime")
+  // or class name ("Point").
+  string name = 1;
+  // Identity of the class; absent iff origin == TYPE_ORIGIN_BUILTIN.
+  Uuid id = 2;
+  // Where the type was defined (builtin, sandbox, or host).
+  TypeOrigin origin = 3;
+  // Whether `dataclasses.is_dataclass` is true for the class.
+  bool is_dataclass = 4;
+  // Class attributes sent eagerly with the type object (class constants, per
+  // the sending wrapper's policy), as `(name, value)` node indexes. The
+  // sandbox keeps one type object per class id: a non-empty set replaces its
+  // attrs, an empty set leaves them unchanged. The worker never sends attrs
+  // for a sandbox class.
+  NodePairs attrs = 5;
+}
+
+// A class instance crossing the sandbox boundary. Host-backed instances route
+// method calls and lazy attribute lookups back to the real object by uuid
+// (`FunctionCall.object_id` / `NameLookup.object_id`); sandbox-defined
+// instances carry a worker-generated uuid instead.
+message ClassInstanceNode {
+  // Index of the instance's class: a `type` node with origin SANDBOX or HOST
+  // (never BUILTIN), shared by every instance of the class in the arena.
+  uint32 class_type = 1;
+  // Identity of the instance, generated by whichever side defined it.
+  Uuid instance_id = 2;
+  // Eagerly-sent attributes as `(name, value)` node indexes, in order.
+  NodePairs attrs = 3;
+}
+
+// An external (host-provided) function value, usually supplied by the parent
+// in response to a `NameLookup` event.
+message Function {
+  string name = 1;
+  optional string docstring = 2;
+}
+
+// ============================================================================
+// Errors
+// ============================================================================
+
+// A raised Python exception with its traceback. Mirrors monty's
+// `MontyException`.
+message RaisedException {
+  // Exception type name, e.g. "ValueError", "json.JSONDecodeError".
+  string exc_type = 1;
+  optional string message = 2;
+  // Outermost frame first, matching Python traceback order.
+  repeated StackFrame traceback = 3;
+  // Structured payload for exception types that carry more than a message;
+  // absent for most exceptions. Mirrors monty's `ExcData`.
+  ExcData data = 4;
+}
+
+// Structured exception payload, mirroring monty's `ExcData` enum. Future
+// exception types that carry more than a message (e.g. OSError's errno)
+// get new oneof arms with fresh tags. An absent/empty kind means "no
+// payload" (`ExcData::None`).
+message ExcData {
+  oneof kind {
+    UnicodeErrorData unicode = 1;
+    JsonErrorData json = 2;
+  }
+}
+
+// CPython's UnicodeDecodeError/UnicodeEncodeError constructor fields
+// (encoding, object, start, end, reason), letting hosts rebuild the real
+// exception instead of a message-only fallback. Mirrors monty's
+// `UnicodeErrorData`.
+message UnicodeErrorData {
+  // Codec name as CPython reports it, e.g. "utf-8".
+  string encoding = 1;
+  // The input that failed: bytes for decode errors, str for encode errors.
+  oneof object {
+    bytes object_bytes = 2;
+    string object_str = 3;
+  }
+  // Failing range: byte offsets for decode errors, character indices for
+  // encode errors. `end` is exclusive.
+  uint64 start = 4;
+  uint64 end = 5;
+  // CPython's reason wording, e.g. "ordinal not in range(128)".
+  string reason = 6;
+}
+
+// CPython's json.JSONDecodeError attribute fields (msg, doc, pos, lineno,
+// colno), letting hosts rebuild the real exception instead of a message-only
+// fallback. Mirrors monty's `JsonErrorData`.
+message JsonErrorData {
+  // Bare error message, without the ": line N column M (char K)" suffix.
+  string msg = 1;
+  // The document being parsed; absent when larger than the sender's size cap
+  // or when bytes input is not valid UTF-8.
+  optional string doc = 2;
+  // Character index of the error in `doc`.
+  uint64 pos = 3;
+  // 1-based line and column of the error.
+  uint64 lineno = 4;
+  uint64 colno = 5;
+}
+
+// 1-based line/column source position (columns count characters, not bytes).
+message CodeLoc {
+  uint32 line = 1;
+  uint32 column = 2;
+}
+
+// Where the expression that suspended execution is in the source. `filename`
+// names the source as a traceback frame does: `<python-input-N>` for the
+// session's N-th feed, or `<string>` inside an `eval()` / `exec()` string.
+// `start` and `end` are UTF-8 byte offsets into that source, `end` exclusive.
+message SourceRange {
+  string filename = 1;
+  uint32 start = 2;
+  uint32 end = 3;
+}
+
+message StackFrame {
+  string filename = 1;
+  CodeLoc start = 2;
+  CodeLoc end = 3;
+  // Function name; absent for module-level code (rendered as "<module>").
+  optional string frame_name = 4;
+  // Source line shown in the traceback preview.
+  optional string preview_line = 5;
+  // Suppress the `~~~` caret markers for this frame.
+  bool hide_caret = 6;
+  // Suppress the `, in <name>` suffix (SyntaxError style).
+  bool hide_frame_name = 7;
+}
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+// Sandbox resource limits. Absent fields are unlimited except recursion depth
+// and `max_suspensions`, which both default to 1000. The parent enforces
+// `max_suspensions`; the child only retains it for dumps and echoes it on
+// `ChildEvent`.
+message ResourceLimits {
+  // Tag 1 was `max_duration_micros`, a cumulative per-session execution
+  // budget, removed in protocol version 5.
+  reserved 1;
+  optional uint64 max_memory_bytes = 2;
+  optional uint64 gc_interval = 3;
+  optional uint64 max_recursion_depth = 4;
+  optional uint64 max_suspensions = 5;
+  // Per-feed and per-turn execution budgets on one clock: the feed budget
+  // resets at each feed, the turn budget at each feed and each resume.
+  optional uint64 max_feed_duration_micros = 6;
+  optional uint64 max_turn_duration_micros = 7;
+  // Cumulative budget for system sleeps, enforced by the parent.
+  optional uint64 max_total_sleep_micros = 8;
+}
+
+// Mirrors monty's `OsPolicy`: the clock, zone, sleep, process clock and
+// initial randomness a session gets, and which of those it asks the host for.
+// Each unset arm means that field's default.
+message OsPolicy {
+  // The instant `date.today()`, `datetime.now()` and `time.time()` read.
+  oneof datetime {
+    // The child's clock.
+    Unit system = 1;
+    // Suspend to the parent's OS handler.
+    Unit call_host = 2;
+    // One frozen instant, for reproducible runs.
+    FixedDateTime fixed = 3;
+  }
+  // The zone naive `datetime.now()` and `date.today()` read in, and that
+  // `astimezone()`, `%Z` and the `time` constants report. Absent = UTC.
+  SandboxTimeZone timezone = 4;
+  // What `time.sleep()` and `asyncio.sleep()` do.
+  // Absent (or with no arm set) = system sleep with the default maximum.
+  SleepMode sleep = 5;
+  // Where an unseeded `random` generator gets its first state.
+  oneof random_start {
+    // From the child's own OS entropy.
+    Unit random_system = 6;
+    // Suspend the first draw with an `os.urandom` call for 2496 bytes.
+    Unit random_call_host = 7;
+    // As `random.seed(seed)` would, for reproducible runs.
+    RandomSeed seed = 8;
+  }
+  // What `time.process_time()` and `time.thread_time()` report.
+  // Absent (or with no arm set) = zero.
+  oneof process_time {
+    // Always 0.0, so elapsed execution time is not observable in the sandbox.
+    Unit zero = 9;
+    // The session's accumulated execution time.
+    Unit elapsed = 10;
+  }
+}
+
+// Mirrors monty's `SandboxTimeZone`.
+message SandboxTimeZone {
+  oneof zone {
+    // UTC, the default.
+    Unit utc = 1;
+    // An IANA zone name (`Europe/London`), resolved from the child's tz database.
+    string named = 2;
+    // A fixed offset from UTC, with a name if it has one.
+    TimeZone fixed = 3;
+  }
+}
+
+// Mirrors monty's `SleepMode`.
+message SleepMode {
+  oneof mode {
+    // The parent waits without invoking its OS handler.
+    SystemSleep system = 1;
+    // Suspend to the parent, which performs the wait.
+    Unit call_host = 2;
+    // Return at once without waiting.
+    Unit zero = 3;
+  }
+}
+
+// A sleep capped by the child and performed by the parent.
+message SystemSleep {
+  // Longest wait one call performs; longer sleeps are cut short. Absent = 10s.
+  optional uint64 max_micros = 1;
+}
+
+// A frozen clock reading.
+message FixedDateTime {
+  // Seconds since the Unix epoch, UTC.
+  int64 unix_seconds = 1;
+  // 0..=999999; anything larger is rejected.
+  uint32 microsecond = 2;
+}
+
+// A `random.seed()` argument: the types CPython accepts.
+message RandomSeed {
+  oneof value {
+    // Arbitrary-size two's-complement little-endian bytes (`BigInt::to_signed_bytes_le`).
+    bytes int = 1;
+    // Must be finite.
+    double float = 2;
+    string str = 3;
+    bytes bytes = 4;
+  }
+}
+
+// ============================================================================
+// Resume payloads
+// ============================================================================
+
+// Outcome of an external function / OS call, decided by the parent. Mirrors
+// monty's `ExtFunctionResult`, plus `not_handled` (which only the child can
+// resolve, against its suspended call).
+message ExtFunctionResult {
+  oneof kind {
+    // The call returned this value: an index into the carrying message's
+    // `values` arena.
+    uint32 return_value = 1;
+    // The call raised this exception.
+    RaisedException error = 2;
+    // The call is asynchronous: register an external future for `call_id`
+    // (the id from the suspension event) and keep executing other tasks.
+    uint32 future = 3;
+    // No handler exists for this name — the child raises NameError.
+    string not_found = 4;
+    // No handler accepted this OS call — the child raises the call's own
+    // no-handler default (PermissionError naming the path for filesystem
+    // calls, RuntimeError for the rest). Only valid answering an `OsCall`
+    // suspension; the child computes it from its retained call payload.
+    Unit not_handled = 5;
+  }
+}
+
+message FutureResult {
+  uint32 call_id = 1;
+  ExtFunctionResult result = 2;
+}
+
+// A named input: `value` indexes the carrying message's `values` arena.
+message NamedRef {
+  string name = 1;
+  uint32 value = 2;
+}
+
+// ============================================================================
+// Requests (parent -> child)
+// ============================================================================
+
+// Tags 1-19 are reserved for `kind` arms and the message-level fields start
+// at 20, mirroring `ChildEvent` — a oneof shares its field-number space with
+// the enclosing message, so a new arm never has to jump the numbering. The
+// same caveats apply: arms past 15 cost a two-byte key, and a forwarding
+// server mirrors this numbering to classify frames without decoding them, so
+// adding an arm degrades to "opaque" while renumbering one would misroute.
+message ParentRequest {
+  oneof kind {
+    Configure configure = 1;
+    InstallDependencies install_dependencies = 2;
+    Feed feed = 3;
+    ResumeCall resume_call = 4;
+    ResumeNameLookup resume_name_lookup = 5;
+    ResumeFutures resume_futures = 6;
+    Dump dump = 7;
+    Load load = 8;
+    Reset reset = 9;
+    Shutdown shutdown = 10;
+    AbortFeed abort_feed = 11;
+  }
+
+  // W3C `traceparent` identifying the caller's span, so a child that exports
+  // its own telemetry can attach its spans to the trace the request came
+  // from. Purely additive context: the child's execution of the request must
+  // not depend on it, and it is absent whenever the parent is not tracing.
+  optional string trace_parent = 20;
+}
+
+// Configures the REPL session this child will serve until `Reset`, sent once
+// when the worker is checked out. The session's repl is materialized lazily on
+// the first `Feed` (or restored by `Load`), so a checked-out-but-unfed
+// worker can still be initialized by `Load` instead. Valid only when the
+// worker has no session yet.
+message Configure {
+  string script_name = 1;
+  ResourceLimits limits = 2;
+  // Type-check each fed snippet before executing it.
+  bool type_check = 3;
+  // Optional stub file contents used by type checking.
+  optional string type_check_stubs = 4;
+  // The parent's monty package version (e.g. "0.0.18"). INFORMATIONAL ONLY —
+  // it is never checked, only reported (in telemetry, and when diagnosing a
+  // rejected `protocol_version`). Parent and child may run different package
+  // versions as long as their protocol versions are compatible.
+  string monty_version = 5;
+  // Introspected `assert` failure messages (see limitations/assert.md).
+  // Absent = on with the default 120-byte operand-repr truncation; 0 disables
+  // annotations; any other value retains that many bytes per operand before
+  // any ellipsis, cutting on a character boundary.
+  optional uint32 assert_message_annotations = 6;
+  // How the child renders the diagnostics carried by `TypingError`. The
+  // structured diagnostics borrow the type checker's database and so cannot
+  // cross the wire — the parent picks the format up front and the child
+  // renders it. Ignored when `type_check` is false.
+  TypeCheckFormat type_check_format = 7;
+  // Render typing diagnostics with ANSI colour escapes. Only `FULL` and
+  // `CONCISE` carry colour; the machine-readable formats ignore it.
+  bool type_check_color = 8;
+  // Version of the wire schema the parent speaks. The child rejects the
+  // session with a `FatalError` naming its own supported range when this
+  // falls outside it, so a parent deployed separately from its worker (over
+  // a websocket, say) learns what to downgrade to without a handshake.
+  //
+  // 0 means the parent declared nothing — either it predates this field or it
+  // is not a monty parent — and is always rejected. The protocol has no
+  // in-band negotiation, so an undeclared peer cannot be assumed compatible.
+  uint32 protocol_version = 9;
+  // How long the child may hold buffered `print()` output before emitting it
+  // as a `Print` event, in milliseconds. Absent means the child's default
+  // (`DEFAULT_PRINT_FLUSH_INTERVAL`). 0 disables the timer and restores line
+  // buffering — one event per completed line, as before this field existed —
+  // for a host that wants each `print()` delivered on its own.
+  //
+  // Output is always flushed before a turn-ending event whatever this says, so
+  // the field trades streaming latency for event volume and nothing else.
+  optional uint32 print_flush_interval_ms = 10;
+  // Absent = `OsPolicy::default()`: the child's clock in UTC and its entropy,
+  // with parent-serviced sleeps capped at 10s. `Load` restores the dump's settings.
+  optional OsPolicy os_policy = 11;
+  // Relay-only: whether a serving relay may store the session. Children ignore
+  // it.
+  Persistence persistence = 12;
+  // Relay-only: names the server-side profile to run the session under.
+  // Absent = the relay's default. Children ignore it.
+  optional string profile = 13;
+}
+
+// How a serving relay treats the session's state; children ignore it.
+enum Persistence {
+  // The relay's default.
+  PERSISTENCE_UNSPECIFIED = 0;
+  // Never stored by the relay on its own: no session ID and never parked.
+  PERSISTENCE_EPHEMERAL = 1;
+  // Parked on idle, drain or disconnect, and loadable by its session ID.
+  PERSISTENCE_STORED = 2;
+}
+
+// Rendering of the typing diagnostics a `TypingError` carries; mirrors ty's
+// `DiagnosticFormat`.
+enum TypeCheckFormat {
+  // Unset by an older parent — the child renders `FULL`.
+  TYPE_CHECK_FORMAT_UNSPECIFIED = 0;
+  TYPE_CHECK_FORMAT_FULL = 1;
+  TYPE_CHECK_FORMAT_CONCISE = 2;
+  TYPE_CHECK_FORMAT_AZURE = 3;
+  TYPE_CHECK_FORMAT_JSON = 4;
+  TYPE_CHECK_FORMAT_JSON_LINES = 5;
+  TYPE_CHECK_FORMAT_RDJSON = 6;
+  TYPE_CHECK_FORMAT_PYLINT = 7;
+  TYPE_CHECK_FORMAT_GITLAB = 8;
+  TYPE_CHECK_FORMAT_GITHUB = 9;
+}
+
+// Executes one snippet against the session. Turn ends with `Complete`,
+// `Error`, `TypingError`, or a suspension event.
+message Feed {
+  string code = 1;
+  // Inputs, each an index into `values`; one arena, so an object passed
+  // under two names is one sandbox object.
+  repeated NamedRef inputs = 2;
+  Arena values = 3;
+  // Skip type checking for this feed even when the session enables it.
+  bool skip_type_check = 4;
+  // Absolute virtual working directory to switch the session to before the
+  // feed, resolved by the parent (an explicit choice, or the first mount on
+  // the session's first feed). Empty keeps the session's current directory.
+  string cwd = 5;
+}
+
+// Ends a pending suspension by raising `exception` uncatchably at its site.
+// The session returns ready in an `Error` event. Hosts use this to stop a feed,
+// including when `max_suspensions` is exceeded.
+message AbortFeed {
+  RaisedException exception = 1;
+}
+
+// Answers a `FunctionCall` or `OsCall` suspension. `call_id` must match the
+// suspension event.
+message ResumeCall {
+  uint32 call_id = 1;
+  ExtFunctionResult result = 2;
+  // The arena `result.return_value` indexes.
+  Arena values = 3;
+}
+
+// Answers a `NameLookup` suspension.
+message ResumeNameLookup {
+  // The arena `value` indexes.
+  Arena values = 1;
+  oneof kind {
+    // The name resolves to this value: an index into `values`.
+    uint32 value = 2;
+    // The name is undefined — the child raises NameError (AttributeError for
+    // a lazy attribute lookup).
+    Unit undefined = 3;
+    // Resolving the name raised on the parent — the child raises this
+    // exception where the lookup suspended, bypassing hasattr()/getattr()
+    // defaults.
+    RaisedException error = 4;
+  }
+}
+
+// Answers a `ResolveFutures` suspension with results for some or all pending
+// call ids.
+message ResumeFutures {
+  // Also answers an eager FunctionCall with exactly one result matching its
+  // call_id. The worker creates a settled awaitable before continuing.
+  repeated FutureResult results = 1;
+  // The arena every `return_value` indexes.
+  Arena values = 2;
+}
+
+// Requests an opaque serialized snapshot of the current session state
+// (idle or suspended). The session stays usable afterwards. The byte payload
+// format is at the discretion of the remote (e.g. it may be an ID or a full dump
+// of state). A relay without session storage answers `Error` and the session
+// carries on.
+message Dump {}
+
+// Restores state produced by `Dump`. Valid only from no session. If
+// the restored state was suspended, the child re-emits the suspension event so
+// the parent learns the resume point; otherwise it replies `Ok`. A relay
+// without session storage answers `Error` and the session carries on.
+message Load {
+  // Either:
+  // - Dump bytes, or
+  // - A previously named session ID from `ChildEvent::session_id`
+  bytes state = 1;
+}
+
+// Ends the checkout: the child drops all session state and returns to the
+// no-session state, ready for the next `Configure` or `Load`.
+message Reset {}
+
+// The child replies `Ok` and exits cleanly.
+message Shutdown {}
+
+// Installs third-party Python packages into the session before further feeds,
+// using `uv pip install --python <venv-python>` against the worker's session
+// virtualenv. Only the
+// embedded-CPython worker honors this; the Monty sandbox child rejects it with
+// an `Error` (it has no host interpreter to install for). Repeatable between
+// feeds. Turn ends with `Ok` on success or `Error` (carrying uv's stderr) on
+// failure. Valid only once a session exists (after `Configure`).
+message InstallDependencies {
+  // PEP 508 requirement strings, e.g. "httpx>=0.27", "numpy". An empty list is
+  // a no-op that replies `Ok`.
+  repeated string requirements = 1;
+}
+
+// ============================================================================
+// Events (child -> parent)
+// ============================================================================
+
+// A oneof shares its field-number space with the enclosing message, so tags
+// 1-19 are reserved by convention for `kind` arms and the message-level
+// fields start at 20 — a new arm then never has to jump the numbering. Note
+// arms past 15 cost a two-byte key instead of one, which forwarding servers
+// (which walk only field keys, on every frame) pay per event. Such a server
+// mirrors this numbering to classify frames without decoding them; it treats
+// a tag it does not know as opaque, so adding an arm degrades rather than
+// misroutes, but renumbering an existing one would break it.
+message ChildEvent {
+  oneof kind {
+    Print print = 1;
+    FunctionCall function_call = 2;
+    OsCall os_call = 3;
+    NameLookup name_lookup = 4;
+    ResolveFutures resolve_futures = 5;
+    Complete complete = 6;
+    Error error = 7;
+    TypingError typing_error = 8;
+    DumpResult dump_result = 9;
+    Ok ok = 10;
+    FatalError fatal_error = 11;
+    ShutdownDump shutdown = 12;
+  }
+
+  // Cumulative execution time consumed by the session's sandbox code, in
+  // microseconds. The in-sandbox clock runs only while the interpreter is
+  // executing bytecode — never while suspended waiting on the parent or idle
+  // between feeds — and survives Dump/Load. Set on every turn-ending event
+  // while a session exists (zero on Print events and outside a session) so
+  // the parent can report how much sandbox time a session has used without
+  // keeping a second clock. Bounds nothing: the budgets are per-feed and
+  // per-turn.
+  uint64 total_execution_micros = 20;
+
+  // Tag 21 was `max_duration_micros`, the removed per-session budget.
+  reserved 21;
+
+  // Echoes the parent-enforced budget so a host restoring an opaque dump can
+  // recover it.
+  optional uint64 max_suspensions = 22;
+
+  // Execution time consumed by the feed in progress, in microseconds — the
+  // `total_execution_micros` clock restarted at the feed that is running.
+  // Lets the parent backstop `max_feed_duration_micros` without tracking feed
+  // boundaries against a clock it cannot see. Zero outside a session.
+  uint64 feed_execution_micros = 24;
+
+  // The session's `max_feed_duration` and `max_turn_duration` limits in
+  // microseconds, when configured. Reported so a parent that restored a
+  // session via `Load` (where the limits travel inside the opaque state
+  // bytes) still learns its budgets.
+  optional uint64 max_feed_duration_micros = 25;
+  optional uint64 max_turn_duration_micros = 26;
+  // Parent-enforced sleep budget, also reported on `Load`.
+  optional uint64 max_total_sleep_micros = 27;
+
+  // The session's script name, surfaced on a `Load` reply so a parent that
+  // restored a session (whose script name, like the limits above, travels
+  // inside the opaque dump bytes) learns it without parsing the dump. Set only
+  // on a successful `Load` reply; unset on all other events.
+  optional string restored_script_name = 23;
+
+  // The session this connection now holds, set only by a remote that stores
+  // sessions, on its first reply to `Configure` or `Load` whatever that
+  // reply's kind. Unset for ephemeral sessions or for remotes that don't
+  // support persistence.
+  optional bytes session_id = 28;
+}
+
+enum PrintStream {
+  PRINT_STREAM_UNSPECIFIED = 0;
+  PRINT_STREAM_STDOUT = 1;
+  PRINT_STREAM_STDERR = 2;
+}
+
+// One run of print() output on a single stream, as one `Print` event may
+// carry several.
+message PrintSegment {
+  PrintStream stream = 1;
+  string text = 2;
+}
+
+// Streamed sandbox print() output. Zero or more of these precede each
+// turn-ending event, and each carries the runs the worker had buffered, in
+// the order the sandbox produced them — so output alternating between the
+// streams batches into one event without losing that order.
+message Print {
+  repeated PrintSegment segments = 1;
+}
+
+// Suspension: the sandbox called an external function, or — when `object_id`
+// is set — a method on a host-backed object (the receiver is NOT included in
+// `args`; the host routes by uuid). The receiver may be a class instance or a
+// class type: calling a host class arrives as a `__call__` method call on the
+// class's uuid, and the host's own policy decides whether construction is
+// allowed. Answer with `ResumeCall`.
+message FunctionCall {
+  string function_name = 1;
+  // Positional arguments, as indexes into `values`.
+  repeated uint32 args = 2;
+  // Keyword arguments as `(key, value)` indexes into `values`, in order.
+  repeated NodePair kwargs = 3;
+  uint32 call_id = 4;
+  // The uuid of the receiver; absent for plain external function calls.
+  Uuid object_id = 5;
+  // The host may await a coroutine and answer with ResumeFutures for this
+  // call_id. Synchronous results use ResumeCall; returning a pending
+  // future remains valid. Absent/false requires the ordinary call reply.
+  bool allow_eager_await = 6;
+  // The arena `args` and `kwargs` index: one per call, so an object passed
+  // twice crosses once.
+  Arena values = 7;
+  // Where the call expression is in the source. Absent from a child that
+  // predates the field; the parent then reports an empty range at offset 0.
+  SourceRange position = 8;
+}
+
+// Suspension: the sandbox performed an OS operation, surfaced for the parent
+// to service (e.g. from a mount) or answer with `ResumeCall`. One typed arm
+// per call; every path is a virtual POSIX sandbox path, never a host path.
+// Some calls have typed result expectations (e.g. `open` must return a
+// file_handle); a mismatched result becomes a Python-level error inside the
+// sandbox.
+//
+// A parent with no handler should answer `ResumeCall` with
+// `ExtFunctionResult.not_handled`: the child raises the call's own default
+// (PermissionError naming the path for filesystem calls, RuntimeError for
+// the rest — monty's `OsFunctionCall::on_no_handler`).
+//
+// Tags 2-49 are reserved for `call` arms and the other message-level fields
+// start at 50, as in `ChildEvent`, so a new call never has to jump the numbering.
+message OsCall {
+  uint32 call_id = 1;
+
+  oneof call {
+    // ---- FS read / check / remove — the string is the virtual path -------
+    string exists = 2; // Path.exists
+    string is_file = 3; // Path.is_file
+    string is_dir = 4; // Path.is_dir
+    string is_symlink = 5; // Path.is_symlink
+    string read_text = 6; // Path.read_text
+    string read_bytes = 7; // Path.read_bytes
+    string stat = 8; // Path.stat
+    string iterdir = 9; // Path.iterdir
+    string resolve = 10; // Path.resolve
+    string absolute = 11; // Path.absolute
+    string unlink = 12; // Path.unlink
+    string rmdir = 13; // Path.rmdir
+
+    // ---- FS write / mutate -----------------------------------------------
+    TextWrite write_text = 14; // Path.write_text (truncating)
+    TextWrite append_text = 15; // Path.append_text
+    BytesWrite write_bytes = 16; // Path.write_bytes (truncating)
+    BytesWrite append_bytes = 17; // Path.append_bytes
+    Open open = 18;
+    Mkdir mkdir = 19;
+    Rename rename = 20;
+
+    // ---- Non-FS ----------------------------------------------------------
+    Getenv getenv = 21; // os.getenv
+    Unit get_environ = 22; // the os.environ snapshot
+    Unit date_today = 23; // date.today()
+    // datetime.now(tz) — the timezone argument (absent for a naive result).
+    DateTimeNow date_time_now = 24;
+    // os.urandom(size), also how `random` seeds an unseeded generator.
+    Urandom urandom = 25;
+    TimeCall time = 26; // time.time() and the other time-module clock reads
+    Sleep sleep = 27; // time.sleep(seconds) under `call_host`: the handler waits
+    AsyncSleep async_sleep = 28; // asyncio.sleep(delay) under `call_host`
+    // System sleeps: capped by the child, charged to `max_total_sleep` and
+    // waited out by the parent without invoking its OS handler.
+    Sleep system_sleep = 29;
+    AsyncSleep async_system_sleep = 30;
+  }
+
+  // The arena any value-typed argument (`Getenv.default`) indexes.
+  Arena values = 50;
+  // As on `FunctionCall`: the parent may await a coroutine and answer with
+  // `ResumeFutures` for `call_id`. Only ever set on `async_sleep`, the one
+  // call a future may answer at all.
+  bool allow_eager_await = 51;
+  // Where the call expression is in the source; absent as on `FunctionCall`.
+  SourceRange position = 52;
+
+  message TextWrite {
+    string path = 1;
+    string data = 2;
+  }
+  message BytesWrite {
+    string path = 1;
+    bytes data = 2;
+  }
+  message Open {
+    string path = 1;
+    // Canonical open() mode string, same set as `FileHandle.mode`.
+    string mode = 2;
+  }
+  message Mkdir {
+    string path = 1;
+    bool parents = 2;
+    bool exist_ok = 3;
+  }
+  message Rename {
+    string src = 1;
+    string dst = 2;
+  }
+  // os.getenv(key, default) — `default` may be any Python value: an index
+  // into the enclosing `OsCall.values`.
+  message Getenv {
+    string key = 1;
+    uint32 default = 2;
+  }
+  // A `time`-module clock read. `caller` names the Python function that asked
+  // (`time.time`, `time.monotonic`, ...), so a parent may answer them
+  // differently; they all share the `time.time` call name.
+  message TimeCall {
+    string caller = 1;
+  }
+  // datetime.now(tz) — the VM validates the argument to None-or-timezone
+  // before suspending, so the wire carries a typed TimeZone rather than an
+  // arbitrary MontyObject.
+  message DateTimeNow {
+    // Fixed-offset timezone for an aware result; absent for a naive one.
+    optional TimeZone tz = 1;
+  }
+  // os.urandom(size) — the byte count the sandbox validated; unsigned so
+  // a negative count cannot be expressed on the wire.
+  message Urandom {
+    uint64 size = 1;
+  }
+  // time.sleep(seconds) — the parent waits, then answers (the sandbox
+  // evaluates the call to None whatever the answer carried). Answering with a
+  // future is refused: the call is a block by definition.
+  message Sleep {
+    // How long to wait. Always finite, non-negative, and small enough to be a
+    // duration of nanoseconds in an int64; a frame breaking that is rejected.
+    double seconds = 1;
+  }
+  // asyncio.sleep(delay) — the awaitable form. A parent running an event
+  // loop should answer `ExtFunctionResult.future` and resolve it once the
+  // delay elapses, so the sandbox's other tasks keep running; answering
+  // directly is equivalent to a wait that blocks them. The answer's value is
+  // ignored: the sandbox keeps the `result` argument itself and produces it
+  // from the `await`.
+  message AsyncSleep {
+    // How long to wait, under the same constraints as `Sleep.seconds`.
+    double delay = 1;
+  }
+}
+
+// Suspension: the sandbox read an undefined name — typically probing whether
+// the parent provides an external function — or, when `object_id` is set, a
+// lazy attribute lookup on a host-backed object. Answer with
+// `ResumeNameLookup`; for attribute lookups an `undefined` answer raises
+// AttributeError (not NameError) inside the sandbox.
+message NameLookup {
+  string name = 1;
+  // Set for attribute lookups on a host-backed object — a class instance, or
+  // a class type (a lazy class attribute): the uuid of the receiver.
+  Uuid object_id = 2;
+  // Where the name (or attribute access) is in the source; absent as on
+  // `FunctionCall`.
+  SourceRange position = 3;
+}
+
+// Suspension: every sandbox task is blocked on external futures previously
+// registered via `ExtFunctionResult.future`. Answer with `ResumeFutures`.
+message ResolveFutures {
+  repeated uint32 pending_call_ids = 1;
+  // Where the main task's blocked `await` is in the source; absent as on
+  // `FunctionCall`.
+  SourceRange position = 2;
+}
+
+// Turn end: the snippet completed with this value. The session is ready for
+// the next `Feed`.
+message Complete {
+  // Index of the result in `values`.
+  uint32 value = 1;
+  Arena values = 2;
+}
+
+// Turn end: the snippet (or request) failed with a Python exception. The
+// session survives — prior globals remain available to later feeds.
+message Error {
+  RaisedException exception = 1;
+}
+
+// Turn end: type checking rejected the fed snippet (only when the session
+// was created with type_check). The snippet was not executed; the session
+// survives.
+message TypingError {
+  // Diagnostics rendered in the session's `TypeCheckFormat`.
+  string diagnostics = 1;
+}
+
+message DumpResult {
+  // Opaque versioned snapshot; see `Dump`.
+  bytes state = 1;
+}
+
+// Generic acknowledgement for Configure / Load (idle) / Reset / Shutdown.
+message Ok {}
+
+// The child hit an unrecoverable error (frame desync, panic, unsupported
+// protocol version) and exits immediately after writing this. A child that
+// exits WITHOUT a FatalError crashed hard (segfault, abort, kill) — parents
+// must treat EOF as a crash.
+message FatalError {
+  string message = 1;
+}
+
+// Turn end: the serving relay (monty-server, never a child) is shutting down
+// and did NOT run the request it is replying to. Sent only in reply to an
+// in-flight request, so the client is always reading when it arrives.
+//
+// Every other server policy action (idle/session/turn timeout, capacity) is
+// just a dropped connection, which the client already classifies as a dead
+// worker — only shutdown needs a message, because only shutdown has state to
+// hand back.
+message ShutdownDump {
+  // What `Load` restores the session from on a fresh connection: the ID a
+  // relay with session storage parked it under. Absent when there is nothing
+  // to load: no session yet, an ephemeral session, a relay without storage, or
+  // a park that failed.
+  optional bytes dump = 1;
+}

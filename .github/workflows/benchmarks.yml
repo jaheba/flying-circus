@@ -1,0 +1,172 @@
+name: Benchmarks and Pages
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      monty_ref:
+        description: Development Monty branch, tag or commit (stable releases are always included)
+        default: main
+        type: string
+      python_version:
+        description: CPython version
+        default: '3.14'
+        type: string
+      pypy_version:
+        description: PyPy interpreter version
+        default: pypy3.11
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: benchmark-pages
+  cancel-in-progress: false
+
+jobs:
+  build-monty:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: monty-main
+            ref: ${{ inputs.monty_ref || 'main' }}
+          - label: monty-1.0
+            ref: v1.0.0
+          - label: monty-1.1
+            ref: v1.1.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Check out Monty
+        uses: actions/checkout@v4
+        with:
+          repository: pydantic/monty
+          ref: ${{ matrix.ref }}
+          path: _monty
+          persist-credentials: false
+      - name: Build release Monty
+        working-directory: _monty
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          make install-py
+          cargo build --locked --release -p monty-runtime
+      - name: Record build provenance
+        env:
+          MONTY_LABEL: ${{ matrix.label }}
+          MONTY_REF: ${{ matrix.ref }}
+        run: |
+          mkdir -p _builds
+          cp _monty/target/release/monty _builds/monty
+          python scripts/monty_build_metadata.py _monty _builds/build.json
+      - name: Upload binary and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: _builds
+          retention-days: 14
+          if-no-files-found: error
+
+  benchmark:
+    needs: build-monty
+    permissions:
+      contents: read
+      actions: read
+      pages: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - name: Set up CPython
+        id: cpython
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version || '3.14' }}
+      - name: Set up PyPy
+        id: pypy
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.pypy_version || 'pypy3.11' }}
+      - name: Install harness and run tests
+        run: |
+          uv sync --locked --python '${{ steps.cpython.outputs.python-path }}'
+          uv run --no-sync python -m unittest discover -s tests
+      - name: Download Monty builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: monty-*
+          path: _builds
+      - name: Restore previous published history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p _site
+          previous_run=$(gh run list --workflow benchmarks.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$previous_run" ]; then
+            gh run download "$previous_run" --name benchmark-history --dir _site
+          fi
+      - name: Compare all runtimes
+        id: benchmarks
+        continue-on-error: true
+        run: |
+          chmod +x _builds/monty-*/monty
+          uv run --no-sync flying-circus \
+            -r monty-1.0="$PWD/_builds/monty-1.0/monty" \
+            -r monty-1.1="$PWD/_builds/monty-1.1/monty" \
+            -r monty-main="$PWD/_builds/monty-main/monty" \
+            -r cpython='${{ steps.cpython.outputs.python-path }}' \
+            -r pypy='${{ steps.pypy.outputs.python-path }}' \
+            --samples 20 --memory-samples 3 --startup-samples 50 --warmups 3 --timeout 120 \
+            --format html --format markdown --format json --output results/current
+      - name: Build Pages site
+        env:
+          WORKFLOW_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HARNESS_COMMIT: ${{ github.sha }}
+        run: |
+          uv run --no-sync python scripts/publish_results.py results/current _site \
+            --run-id "$(date -u +%Y%m%dT%H%M%SZ)-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --monty-builds _builds
+      - name: Save reports and history
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-history
+          path: _site
+          retention-days: 90
+          if-no-files-found: error
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Flag measurement failures
+        if: steps.benchmarks.outcome == 'failure'
+        run: |
+          echo 'Benchmark failures are visible in the report; inspect the results.' >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: benchmark
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy benchmark results
+        id: deployment
+        uses: actions/deploy-pages@v4

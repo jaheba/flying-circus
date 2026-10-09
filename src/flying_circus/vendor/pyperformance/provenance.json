@@ -1,0 +1,54 @@
+{
+  "repository": "https://github.com/python/pyperformance",
+  "revision": "ccc0aeb7ad46d65b6dcd4160e0fdda4d885852dd",
+  "benchmarks": {
+    "fannkuch": {
+      "path": "pyperformance/data-files/benchmarks/bm_fannkuch/run_benchmark.py",
+      "sha256": "2a8e4bc4c5e7e8ac605a4ca8246cc4baeab5336ac986d976e33657162750e8bf"
+    },
+    "nbody": {
+      "path": "pyperformance/data-files/benchmarks/bm_nbody/run_benchmark.py",
+      "sha256": "d1385e816d7cfea361b7915e2cf70138cd6b84f40df8bd5152638851f7bcac2b"
+    },
+    "pidigits": {
+      "path": "pyperformance/data-files/benchmarks/bm_pidigits/run_benchmark.py",
+      "sha256": "4bf89183acb8651623676ece6e10787b6c71eec549fe53ce17a62a812ef7447d"
+    },
+    "spectral_norm": {
+      "path": "pyperformance/data-files/benchmarks/bm_spectral_norm/run_benchmark.py",
+      "sha256": "a3390ec6d75606fec30c4b59ad5f77d5292cd8e36f445197232a34560a880b18"
+    },
+    "regex_dna": {
+      "path": "pyperformance/data-files/benchmarks/bm_regex_dna/run_benchmark.py",
+      "sha256": "d820dbdf12262cd11a543ae3dc3fd85793a20220d5a15ef687d8ef57a75c97c6"
+    },
+    "meteor_contest": {
+      "path": "pyperformance/data-files/benchmarks/bm_meteor_contest/run_benchmark.py",
+      "sha256": "b616f5f87e129a6b35650452951f40a7812cf22efff5a0777e51287da13c2f48"
+    },
+    "barnes_hut": {
+      "path": "pyperformance/data-files/benchmarks/bm_barnes_hut/run_benchmark.py",
+      "sha256": "802a1c170b82a5d82ea69b7a893f09d4b50b4f232e20a8e1c1bb8b2c04e6af1d"
+    },
+    "float": {
+      "path": "pyperformance/data-files/benchmarks/bm_float/run_benchmark.py",
+      "sha256": "b4f61a0978f5b0af2c0d07544ae26422868992e62b8f40e2967e3c694fc1b9a9"
+    },
+    "unpack_sequence": {
+      "path": "pyperformance/data-files/benchmarks/bm_unpack_sequence/run_benchmark.py",
+      "sha256": "0dafe97531abc4a5baf30fe011db7acb3bf1e64cd4e41acb0c7db2bb141a8382"
+    },
+    "json_dumps": {
+      "path": "pyperformance/data-files/benchmarks/bm_json_dumps/run_benchmark.py",
+      "sha256": "023c991ff827fdcbfcfb2b7e3cadf023352a61d1903643d8af0ef302a0db1bf7"
+    },
+    "json_loads": {
+      "path": "pyperformance/data-files/benchmarks/bm_json_loads/run_benchmark.py",
+      "sha256": "16c41ff06bf3173d30158c767340d389c459a656e997e306719891d50f09646f"
+    },
+    "gc_traversal": {
+      "path": "pyperformance/data-files/benchmarks/bm_gc_traversal/run_benchmark.py",
+      "sha256": "0798ab87ca12687c68e101d14ae9ac0c50eaa9b4f14ecee3882f7e499191828f"
+    }
+  }
+}
