@@ -5,7 +5,7 @@ STYLE = """
 :root{color-scheme:light dark;--ink:#172b3a;--accent:#087ca7;--sky:#dff3ff;--circus-red:#c92b38;--paper:#fffdf9;--page:#eef3f6;--card-shadow:0 12px 36px #172b3a14;--stripe-white:#fffdf9;--table:#fff;--header-ink:#16405a;--line:#dfedf5;--outline:#bddded;--row:#f4faff;--hover:#e9f6ff}
 *{box-sizing:border-box}
 body{margin:0;background:var(--page);color:var(--ink);font:15px/1.6 system-ui,sans-serif}
-main{width:calc(100% - 48px);max-width:1450px;position:relative;z-index:1;margin:-64px auto;padding:38px max(4vw,24px) 70px;background:var(--paper);border:1px solid var(--outline);border-top:5px solid #64c7f2;border-radius:8px;box-shadow:var(--card-shadow)}
+main{width:calc(100% - 48px);max-width:1180px;position:relative;z-index:1;margin:-64px auto;padding:38px max(4vw,24px) 70px;background:var(--paper);border:1px solid var(--outline);border-top:5px solid #64c7f2;border-radius:8px;box-shadow:var(--card-shadow)}
 body::before,body::after{content:"";display:block;height:112px;background:repeating-linear-gradient(90deg,var(--circus-red) 0 24px,var(--stripe-white) 24px 48px)}
 h1{font:700 36px/1.2 Georgia,serif;letter-spacing:-.025em;margin:0 0 24px}
 h2{font-size:21px;margin:40px 0 16px}
