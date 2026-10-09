@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from .differences import difference
-from .formatting import measurement, runtime_description, runtime_label
+from .formatting import measurement, runtime_description, runtime_label, winners
 from .theme import page
 
 MODES = ('one-shot', 'repeated')
@@ -131,7 +131,11 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
                           row['status'], measurement(row.get('baseline') if isinstance(row.get('baseline'), (int, float)) else None, metric),
                           measurement(row.get('candidate') if isinstance(row.get('candidate'), (int, float)) else None, metric),
                           f'{row["change_percent"]:+.1f}%' if 'change_percent' in row else 'n/a', detail)
-                document += '<tr>' + ''.join(f'<td>{esc(v)}</td>' for v in fields) + '</tr>'
+                source = first['benchmarks'].get(row['workload'], {}).get('source_url', '')
+                cells = [esc(v) for v in fields]
+                if source.startswith('https://github.com/'):
+                    cells[0] = f'<a href="{esc(source)}">{cells[0]}</a>'
+                document += '<tr>' + ''.join(f'<td>{v}</td>' for v in cells) + '</tr>'
             document += '</tbody></table></div>'
         document += '<p>Inconclusive changes are recorded in diff.json and excluded from this table. Bootstrap bounds are estimates; repeat runs when results are borderline.</p>'
         return page(title, document), changes
@@ -140,8 +144,10 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
         document += ''.join(header(key) for key in keys) + '</tr></thead><tbody><tr>'
         values = {key: measurement(entry.get('median_wall_seconds') * 1000, 'ms') if not entry.get('errors') else 'n/a'
                   for key, entry in startup['engines'].items()}
+        best = winners(values)
         for key in keys:
-            document += f'<td>{values[key]}</td>'
+            text = f'<strong>{values[key]}</strong>' if key in best else values[key]
+            document += f'<td>{text}</td>'
         document += '</tr></tbody></table></div>'
     workload_names = list(first['benchmarks'])
     for metric, heading in (('ms', 'Runtime · ms · one-shot / repeated'), ('rss_mib', 'Peak RSS · MiB · one-shot')):
@@ -149,7 +155,9 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
         document += f'<h2>{heading}</h2><div class="table-wrap"><table' + (' data-paired="true"' if paired else '') + '><thead><tr><th>Workload</th>'
         document += ''.join(header(key) for key in keys) + '</tr></thead><tbody>'
         for name in workload_names:
-            document += f'<tr><td>{esc(name)}</td>'
+            source = first['benchmarks'][name].get('source_url', '')
+            label = f'<a href="{esc(source)}">{esc(name)}</a>' if source.startswith('https://github.com/') else esc(name)
+            document += f'<tr><td>{label}</td>'
             for key in keys:
                 plain, parts, reasons = [], [], []
                 for mode in MODES if paired else ('one-shot',):
@@ -159,6 +167,11 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
                     value = record[field] * scale if record['status'] == 'ok' and record[field] is not None else None
                     text = measurement(value, metric)
                     plain.append(text)
+                    available = {other: measurement(runs[mode][other]['benchmarks'][name][field] * scale, metric)
+                                 for other in keys if runs[mode][other]['benchmarks'][name]['status'] == 'ok'
+                                 and runs[mode][other]['benchmarks'][name][field] is not None}
+                    if key in winners(available):
+                        text = f'<strong>{text}</strong>'
                     if record['status'] == 'failed':
                         text = 'failed'
                     parts.append(text)

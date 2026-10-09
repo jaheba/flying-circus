@@ -76,7 +76,7 @@ class WinnerRenderingTests(unittest.TestCase):
             main(['--monty-results', str(root / 'baseline.json'),
                   '--candidate-results', str(root / 'candidate.json'), '--output', str(root / 'report.html')])
             document = (root / 'report.html').read_text()
-            self.assertIn('<strong>5</strong>', document)
+            self.assertIn('<strong>5.00</strong>', document)
             self.assertIn('<strong>1.00</strong>', document)
-            self.assertNotIn('<strong>10</strong>', document)
+            self.assertNotIn('<strong>10.0</strong>', document)
             self.assertNotIn('<strong>2.00</strong>', document)

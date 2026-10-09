@@ -5,7 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
-RELEASES = {'monty-1.0': '1.0.0', 'monty-1.1': '1.1.0'}
+RELEASES = {'monty': None}
 
 
 def install(output, python):
@@ -20,11 +20,11 @@ def install(output, python):
         binary = scripts / ('monty.exe' if os.name == 'nt' else 'monty')
         package = 'pydantic-monty-runtime'
         command = ['uv', 'pip', 'install', '--python', str(interpreter), '--only-binary', ':all:',
-                   '--index-url', 'https://pypi.org/simple', f'{package}=={version}']
+                   '--index-url', 'https://pypi.org/simple', '--refresh-package', package, f'{package}=={version}' if version else package]
         subprocess.run(command, check=True)
         installed = subprocess.check_output([str(interpreter), '-c',
             'from importlib.metadata import version; print(version("pydantic-monty-runtime"))'], text=True).strip()
-        if installed != version:
+        if version and installed != version:
             raise ValueError(f'Expected {version}, installed {installed}')
         response = subprocess.run([str(binary), '--version'], capture_output=True, text=True, check=True)
         metadata = {'label': label, 'package': package, 'package_version': installed,

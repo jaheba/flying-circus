@@ -33,10 +33,10 @@ class OverviewTests(unittest.TestCase):
             self.assertEqual(document.count('<table'), 2)
             self.assertIn('data-one-shot=', document)
             self.assertIn('data-repeated=', document)
-            self.assertNotIn('<strong>10</strong>', document)
-            self.assertIn('10 / 5', document)
+            self.assertIn('<strong>10.0</strong>', document)
+            self.assertIn('<strong>10.0</strong> / 5.00', document)
             self.assertIn('runtime-info', document)
-            self.assertNotIn('<strong>2</strong>', document)
+            self.assertIn('<strong>2.00</strong>', document)
             self.assertIn('CPU</dt><dd>Not recorded', document)
             self.assertNotIn('Median application request latency.', document)
 

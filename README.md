@@ -35,6 +35,9 @@ flying-circus -r python3.14 -r pypy3 --format html --format markdown --format js
 
 Reports are written as `report.html`, `report.md`, and `report.json` in the result directory.
 Markdown includes startup, timing and RSS tables with runtime names and versions.
+Lowest measurements per scenario are bold, including ties at the displayed precision.
+Values display as `0.xx`, `x.xx`, `xx.x`, or three significant digits for larger values;
+very small measurements retain additional precision to avoid rounding to zero.
 JSON contains a versioned report envelope with run metadata, raw results for both scenarios, startup samples,
 and all diff classifications when `--diff` is enabled. Unavailable numeric measurements are `null` with a status.
 Diff HTML and Markdown show significant changes, compatibility changes and failures;
@@ -432,10 +435,10 @@ The startup command verifies that the host and binary hashes still match the app
 ## Published benchmarks
 
 The `Benchmarks and Pages` workflow runs on pushes to `main`, daily at 05:17 UTC, and manually.
-It installs the published `pydantic-monty-runtime==1.0.0` and `==1.1.0` wheels into separate environments with uv,
-then compares their executables with CPython 3.14 and PyPy 3.11 on one `ubuntu-24.04` runner.
+It installs the latest stable `pydantic-monty-runtime` wheel from PyPI with uv and compares its executable with
+CPython 3.14 and PyPy 3.11 on one `ubuntu-24.04` runner.
 Installation requires binary wheels; the workflow never builds Monty from source.
-Development `main` is omitted because it has no corresponding published release wheel.
+The resolved Monty package version and binary hash are recorded in each report.
 Manual runs can select another CPython or PyPy version.
 Each run measures startup first, followed by all workloads in one-shot and repeated scenarios, with separate RSS samples.
 
@@ -449,3 +452,5 @@ Unexpected benchmark failures remain visible in published reports; missing repor
 
 Pages must use GitHub Actions as its publishing source.
 The workflow uses GitHub's standard Pages artifact deployment, with Pages write and OIDC permissions confined to the deploy job.
+
+Published benchmark names link to their workload source at the exact harness commit used for that run.

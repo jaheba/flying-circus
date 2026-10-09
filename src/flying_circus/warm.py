@@ -124,7 +124,7 @@ def main(argv=None, runtimes=None):
         }
         for name in names:
             results[engine]['benchmarks'][name] = {
-                'input_bytes': manifest[name].get('input_bytes'), 'fixture_sha256': manifest[name].get('fixture_sha256'),
+                'source_file': manifest[name]['file'], 'input_bytes': manifest[name].get('input_bytes'), 'fixture_sha256': manifest[name].get('fixture_sha256'),
                 'fixture_setup': 'outside request timing' if setups[name] and args.scenario != 'cold_process_one_shot' else 'included in process timing',
                 'scenario': args.scenario, 'upstream': manifest[name].get('upstream'),
                 'workload_sha256': digest(ROOT / 'workloads' / manifest[name]['file']),

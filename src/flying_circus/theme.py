@@ -4,8 +4,9 @@ import html
 STYLE = """
 :root{color-scheme:light;--ink:#172b3a;--accent:#087ca7;--sky:#dff3ff;--circus-red:#c92b38;--paper:#fffdf9}
 *{box-sizing:border-box}
-body{margin:0;background:repeating-linear-gradient(90deg,var(--circus-red) 0 28px,var(--paper) 28px 56px);color:var(--ink);font:15px/1.6 system-ui,sans-serif}
-main{width:calc(100% - 48px);max-width:1450px;margin:32px auto;padding:38px max(4vw,24px) 70px;background:var(--paper);border-top:5px solid #64c7f2;box-shadow:0 8px 32px #49202b26}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.6 system-ui,sans-serif}
+main{width:calc(100% - 48px);max-width:1450px;position:relative;z-index:1;margin:-64px auto;padding:38px max(4vw,24px) 70px;background:var(--paper);border-top:5px solid #64c7f2;box-shadow:none}
+body::before,body::after{content:"";display:block;height:112px;background:repeating-linear-gradient(90deg,var(--circus-red) 0 24px,var(--paper) 24px 48px)}
 h1{font:700 36px/1.2 Georgia,serif;letter-spacing:-.025em;margin:0 0 24px}
 h2{font-size:21px;margin:40px 0 16px}
 p{max-width:960px}
@@ -32,8 +33,8 @@ th button:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 th .sort-controls{display:block;margin-top:6px;font-size:10px;font-weight:400}
 strong{font-weight:800}
 code{font-size:12px;overflow-wrap:anywhere}
-@media(max-width:850px){th,td{padding:12px}main{width:calc(100% - 24px);margin:20px auto;padding:26px 18px 40px}h1{font-size:28px}}
-@media print{body{background:white;border:0}main{width:100%;max-width:none;margin:0;padding:20px;border:0;box-shadow:none}th{background:#eee;color:#222}}
+@media(max-width:850px){th,td{padding:12px}main{width:calc(100% - 24px);margin:-64px auto;padding:26px 18px 40px}h1{font-size:28px}}
+@media print{body::before,body::after{display:none}body{background:white;border:0}main{width:100%;max-width:none;margin:0;padding:20px;border:0;box-shadow:none}th{background:#eee;color:#222}}
 """
 
 SORT_SCRIPT = """

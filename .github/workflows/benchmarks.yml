@@ -49,7 +49,7 @@ jobs:
         run: |
           uv sync --locked --python '${{ steps.cpython.outputs.python-path }}'
           uv run --no-sync python -m unittest discover -s tests
-      - name: Install released Monty binaries
+      - name: Install latest published Monty
         run: |
           uv run --no-sync python scripts/install_monty.py \
             --python '${{ steps.cpython.outputs.python-path }}' --output _runtimes
@@ -67,8 +67,7 @@ jobs:
         continue-on-error: true
         run: |
           uv run --no-sync flying-circus \
-            -r monty-1.0="$PWD/_runtimes/monty-1.0/bin/monty" \
-            -r monty-1.1="$PWD/_runtimes/monty-1.1/bin/monty" \
+            -r monty="$PWD/_runtimes/monty/bin/monty" \
             -r cpython='${{ steps.cpython.outputs.python-path }}' \
             -r pypy='${{ steps.pypy.outputs.python-path }}' \
             --samples 20 --memory-samples 3 --startup-samples 50 --warmups 3 --timeout 120 \
@@ -77,6 +76,7 @@ jobs:
         env:
           WORKFLOW_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           HARNESS_COMMIT: ${{ github.sha }}
+          SOURCE_REPOSITORY: ${{ github.server_url }}/${{ github.repository }}
         run: |
           uv run --no-sync python scripts/publish_results.py results/current _site \
             --run-id "$(date -u +%Y%m%dT%H%M%SZ)-${{ github.run_id }}-${{ github.run_attempt }}" \

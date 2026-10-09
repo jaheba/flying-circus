@@ -90,7 +90,7 @@ class MatrixTests(unittest.TestCase):
                             self.assertIn('Peak RSS', document)
                             self.assertIn('one-shot / repeated', document)
                             self.assertLess(document.index('Process startup'), document.index('Runtime · ms'))
-                            self.assertNotIn('<strong>0.', document)
+                            self.assertIn('<strong>' if format == 'html' else '**', document)
                             self.assertIn('Python ', document)
                 self.assertTrue((output / 'startup.json').is_file())
                 if diff:

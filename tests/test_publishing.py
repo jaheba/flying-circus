@@ -63,3 +63,24 @@ class PublishingTests(unittest.TestCase):
             for key in ('old', 'new'):
                 data = json.loads((results / 'repeated' / f'{key}.json').read_text())
                 self.assertEqual(data['revision'], key * 10)
+
+    def test_benchmark_sources_link_to_the_exact_run_commit(self):
+        from flying_circus.bench import ROOT, digest
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            results = root / 'results'
+            results.mkdir()
+            (results / 'run.json').write_text(json.dumps({'timestamp': 'test', 'runtimes': {'python': {'engine': 'cpython'}}}))
+            (results / 'report.html').write_text('<main>report</main>')
+            manifest = json.loads((ROOT / 'workloads/manifest.json').read_text())
+            source = manifest['expense_report']['file']
+            for mode in ('one-shot', 'repeated'):
+                (results / mode).mkdir()
+                (results / mode / 'python.json').write_text(json.dumps({'benchmarks': {'expense_report': {
+                    'workload_sha256': digest(ROOT / 'workloads' / source)}}}))
+            commit = 'a' * 40
+            with patch.dict('os.environ', {'HARNESS_COMMIT': commit}), patch.object(publishing, 'write_reports'):
+                publishing.publish(results, root / 'site', 'linked-run')
+            run = json.loads((results / 'one-shot/python.json').read_text())
+            self.assertEqual(run['benchmarks']['expense_report']['source_url'],
+                             f'https://github.com/jaheba/flying-circus/blob/{commit}/src/flying_circus/workloads/{source}')

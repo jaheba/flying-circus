@@ -1,13 +1,28 @@
-def milliseconds(value):
+def number(value):
     if value is None:
         return 'n/a'
-    return f'{value:.0f}' if value >= 1 else f'{value:.2g}'
+    magnitude = abs(value)
+    if 0 < magnitude < 0.005:
+        return f'{value:.3g}'
+    if round(magnitude, 2) < 10:
+        return f'{value:.2f}'
+    if round(magnitude, 1) < 100:
+        return f'{value:.1f}'
+    return f'{float(f"{value:.3g}"):.0f}'
+
+
+def milliseconds(value):
+    return number(value)
 
 
 def measurement(value, metric):
-    if metric == 'ms':
-        return milliseconds(value)
-    return 'n/a' if value is None else f'{value:.2f}'
+    return number(value)
+
+
+def winners(values):
+    available = {key: float(value) for key, value in values.items() if value not in ('n/a', 'failed')}
+    best = min(available.values(), default=None)
+    return {key for key, value in available.items() if value == best}
 
 
 def runtime_label(runtime):

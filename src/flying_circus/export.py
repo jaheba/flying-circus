@@ -1,7 +1,7 @@
 import json
 
 from . import matrix_report
-from .formatting import measurement, runtime_description, runtime_label
+from .formatting import measurement, runtime_description, runtime_label, winners
 
 EXTENSIONS = {'html': 'html', 'markdown': 'md', 'json': 'json'}
 
@@ -59,13 +59,17 @@ def markdown(data):
                              row['status'], measurement(row.get('baseline'), row['metric']),
                              measurement(row.get('candidate'), row['metric']),
                              f'{row["change_percent"]:+.1f}%' if 'change_percent' in row else 'n/a', detail)])
+                source = first['benchmarks'].get(row['workload'], {}).get('source_url', '')
+                if source.startswith('https://github.com/'):
+                    rows[-1][0] = f'[{escape(row["workload"])}]({source})'
             lines += [table(['Workload', 'Scenario', 'Metric', 'Candidate', 'Result', 'Baseline', 'Candidate value', 'Change', 'Bounds / reason'], rows), '']
         lines += ['Inconclusive results are excluded from the table. Bootstrap bounds are estimates; repeat borderline runs.', '']
     else:
         if startup.get('engines'):
             values = {key: 'failed' if entry.get('errors') else measurement(entry['median_wall_seconds'] * 1000, 'ms')
                       for key, entry in startup['engines'].items()}
-            cells = [values[key] for key in keys]
+            best = winners(values)
+            cells = [f'**{values[key]}**' if key in best else values[key] for key in keys]
             lines += ['## Process startup · ms', '', table(headers, [cells]), '']
         for metric, heading in (('ms', 'Runtime · ms · one-shot / repeated'), ('rss_mib', 'Peak RSS · MiB · one-shot')):
             rows = []
@@ -79,7 +83,12 @@ def markdown(data):
                         value = record[field]
                         values[mode, key] = ('failed' if record['status'] == 'failed' else
                                             measurement(value * scale if record['status'] == 'ok' and value is not None else None, metric))
-                rows.append([escape(name)] + [' / '.join(values[mode, key] for mode in modes) for key in keys])
+                    best = winners({key: values[mode, key] for key in keys})
+                    for key in best:
+                        values[mode, key] = f'**{values[mode, key]}**'
+                source = first['benchmarks'][name].get('source_url', '')
+                label = f'[{escape(name)}]({source})' if source.startswith('https://github.com/') else escape(name)
+                rows.append([label] + [' / '.join(values[mode, key] for mode in modes) for key in keys])
             lines += [f'## {heading}', '', table(['Workload'] + headers, rows), '']
         failures = []
         for mode, results in runs.items():

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .compare import compare_runs
 from .machine import cpu_info
-from .formatting import measurement, runtime_description
+from .formatting import measurement, runtime_description, winners
 from .theme import page
 
 
@@ -91,8 +91,9 @@ def render(directory):
             if entry['binary_sha256'] != first[engine]['binary_sha256']:
                 raise ValueError(f'{engine}: startup binary differs')
             displays[engine] = measurement(entry['median_wall_seconds'] * 1000, 'ms')
+        best = winners(displays)
         for engine in first:
-            display = displays[engine]
+            display = f'<strong>{displays[engine]}</strong>' if engine in best else displays[engine]
             document += f'<td>{display}</td>'
         document += '</tr></tbody></table></div>'
     for metric, title in (('ms', 'Runtime · ms'), ('rss_mib', 'Peak RSS · MiB')):
@@ -106,7 +107,9 @@ def render(directory):
         for name in run['benchmarks']:
             if name == 'startup':
                 continue
-            document += f'<tr><td>{escape(name)}</td>'
+            source = run['benchmarks'][name].get('source_url', '')
+            label = f'<a href="{escape(source)}">{escape(name)}</a>' if source.startswith('https://github.com/') else escape(name)
+            document += f'<tr><td>{label}</td>'
             for engine in first:
                 parts, plain, reasons = [], [], []
                 for mode in selected:
@@ -114,6 +117,9 @@ def render(directory):
                     value = row[engine + '_' + metric]
                     display = measurement(value, metric)
                     plain.append(display)
+                    available = {e: measurement(row[e + '_' + metric], metric) for e in first}
+                    if engine in winners(available):
+                        display = f'<strong>{display}</strong>'
                     parts.append(display)
                     if value is None and row[engine + '_reason']:
                         reasons.append(mode + ': ' + row[engine + '_reason'])

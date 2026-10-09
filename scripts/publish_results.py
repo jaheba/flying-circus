@@ -7,6 +7,8 @@ import shutil
 from pathlib import Path
 
 from flying_circus.export import write_reports
+from flying_circus.bench import ROOT, digest
+from urllib.parse import quote
 from flying_circus.theme import page
 
 
@@ -38,6 +40,22 @@ def publish(results, site, run_id, monty_packages=None):
                 path.write_text(json.dumps(run, indent=2) + '\n', encoding='utf-8')
             build['monty_packages'].append(entry)
         (results / 'run.json').write_text(json.dumps(index, indent=2) + '\n', encoding='utf-8')
+    repository = os.environ.get('SOURCE_REPOSITORY', 'https://github.com/jaheba/flying-circus').rstrip('/')
+    commit = build['harness_commit']
+    if commit and re.fullmatch(r'[0-9a-f]{40,64}', commit) and repository.startswith('https://github.com/'):
+        manifest = json.loads((ROOT / 'workloads/manifest.json').read_text())
+        index = json.loads((results / 'run.json').read_text())
+        for mode in ('one-shot', 'repeated'):
+            for key in index['runtimes']:
+                path = results / mode / f'{key}.json'
+                run = json.loads(path.read_text())
+                for name, record in run['benchmarks'].items():
+                    source = manifest.get(name, {}).get('file')
+                    if source:
+                        if digest(ROOT / 'workloads' / source) != record['workload_sha256']:
+                            raise ValueError(f'{name}: source differs from measured workload')
+                        record['source_url'] = f'{repository}/blob/{commit}/src/flying_circus/workloads/{quote(source)}'
+                path.write_text(json.dumps(run, indent=2) + '\n', encoding='utf-8')
     (results / 'build.json').write_text(json.dumps(build, indent=2) + '\n', encoding='utf-8')
     write_reports(results, ['html', 'markdown', 'json'])
     shutil.copytree(results, destination)
