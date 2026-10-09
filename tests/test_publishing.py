@@ -37,7 +37,7 @@ class PublishingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Invalid run ID'):
             publishing.publish('/unused', '/unused', '../escape')
 
-    def test_each_monty_runtime_keeps_its_own_build_provenance(self):
+    def test_each_monty_runtime_keeps_its_own_package_provenance(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             results, builds = root / 'results', root / 'builds'
@@ -47,9 +47,8 @@ class PublishingTests(unittest.TestCase):
                 index['runtimes'][key] = {'engine': 'monty', 'label': label}
                 folder = builds / label
                 folder.mkdir(parents=True)
-                metadata = {'label': label, 'commit': key * 10, 'command': 'cargo build --release',
-                            'rustc': 'rustc test', 'version': label, 'binary_sha256': key}
-                (folder / 'build.json').write_text(json.dumps(metadata))
+                metadata = {'label': label, 'package': 'pydantic-monty-runtime', 'package_version': key * 10, 'version': label, 'binary_sha256': key}
+                (folder / 'package.json').write_text(json.dumps(metadata))
                 for mode in ('one-shot', 'repeated'):
                     (results / mode).mkdir(exist_ok=True)
                     (results / mode / f'{key}.json').write_text(json.dumps({'binary_sha256': key}))
@@ -60,7 +59,7 @@ class PublishingTests(unittest.TestCase):
             saved = json.loads((results / 'run.json').read_text())
             self.assertEqual(saved['runtimes']['old']['version'], 'monty-1.0')
             self.assertEqual(saved['runtimes']['new']['revision'], 'new' * 10)
-            self.assertEqual(len(json.loads((results / 'build.json').read_text())['monty_builds']), 2)
+            self.assertEqual(len(json.loads((results / 'build.json').read_text())['monty_packages']), 2)
             for key in ('old', 'new'):
                 data = json.loads((results / 'repeated' / f'{key}.json').read_text())
                 self.assertEqual(data['revision'], key * 10)

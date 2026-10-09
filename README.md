@@ -432,14 +432,16 @@ The startup command verifies that the host and binary hashes still match the app
 ## Published benchmarks
 
 The `Benchmarks and Pages` workflow runs on pushes to `main`, daily at 05:17 UTC, and manually.
-It builds Monty 1.0.0 (`v1.0.0`), 1.1.0 (`v1.1.0`), and `pydantic/monty` `main` in release mode,
-then compares all three with CPython 3.14 and PyPy 3.11 on one `ubuntu-24.04` benchmark runner.
-Builds run in parallel and retain separate source commits, binary hashes, versions and compiler metadata.
-Manual runs can select another development Monty ref or interpreter version; the two stable releases remain included.
+It installs the published `pydantic-monty-runtime==1.0.0` and `==1.1.0` wheels into separate environments with uv,
+then compares their executables with CPython 3.14 and PyPy 3.11 on one `ubuntu-24.04` runner.
+Installation requires binary wheels; the workflow never builds Monty from source.
+Development `main` is omitted because it has no corresponding published release wheel.
+Manual runs can select another CPython or PyPy version.
 Each run measures startup first, followed by all workloads in one-shot and repeated scenarios, with separate RSS samples.
 
 GitHub Pages serves the latest report, with Markdown and JSON downloads and an archive of the latest 90 runs.
-The workflow records the Monty source commit, compiler version, build command, binary hashes and Actions run link.
+The workflow records the Monty package versions, installation commands, executable versions, binary hashes and Actions run link.
+Published wheel compiler flags and source revisions are marked unverified.
 History is carried forward through a `benchmark-history` Actions artifact with a 90-day retention period.
 If no successful run remains within artifact retention, history starts again.
 GitHub-hosted runner hardware can vary; compare runtimes within a run and use a dedicated machine for precise historical trends.
