@@ -15,6 +15,12 @@ def resolve(spec, timeout=30):
     else:
         executable = spec
         label = Path(executable).name
+    if executable.startswith('@'):
+        from .cache import cached_binary
+        name = executable[1:]
+        if '=' not in spec:
+            label = name
+        executable = str(cached_binary(name))
     executable = os.path.expanduser(executable)
     found = shutil.which(executable)
     if not found:

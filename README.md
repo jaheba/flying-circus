@@ -486,3 +486,43 @@ flying-circus --quick -v -r monty -r python3 -r pypy3
 
 Without verbose output, the CLI shows run phases and report paths. Failures are
 always printed to stderr.
+
+## Cached Monty builds
+
+Save a built Monty executable once, then reuse the snapshot while rebuilding your
+working tree:
+
+```sh
+flying-circus cache main /path/to/monty/target/release/monty
+flying-circus --diff -r baseline=@main -r candidate=/path/to/monty/target/release/monty
+flying-circus cache --list
+```
+
+The cache copies the executable into your user cache directory. Rebuilding or
+switching branches in the source checkout does not change the saved binary.
+`@main` also works without a label: `-r @main`.
+To update the baseline after building a newer main revision:
+
+```sh
+flying-circus cache main /path/to/monty/target/release/monty --replace
+```
+
+This command saves existing builds; it does not run a build or fetch main.
+Each snapshot records its source path, version, timestamp and SHA256. Runtime
+selection checks the cached binary's hash before using it. Cache binaries are
+local to the host and should be recreated for another platform or architecture.
+
+## Memory-intensive workloads
+
+The full suite includes five `memory_` workloads. String lists retain 500,000
+unique strings; string-key indexes retain 250,000 entries. Each has an 8-byte
+short-string variant and a 64-byte control. Customer records retain 100,000
+nested dictionaries with independently created short values and tag lists.
+All allocations happen inside request timing and stay alive through validation.
+These workloads help compare short-string inlining changes against longer-string
+behavior using the existing runtime and peak RSS measurements.
+
+RSS includes interpreter startup, allocator overhead and temporary allocations;
+it measures the process peak rather than the exact size of retained strings.
+Compare before/after binaries on the same host using `--diff`. Use the longer
+string variants as controls when interpreting gains in the short variants.

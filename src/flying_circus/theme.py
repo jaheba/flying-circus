@@ -34,6 +34,15 @@ th button:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 th .sort-controls{display:block;margin-top:6px;font-size:10px;font-weight:400}
 strong{font-weight:800}
 code{font-size:12px;overflow-wrap:anywhere}
+.runtime-chart{border:1px solid var(--outline);border-radius:8px;padding:16px 20px;background:var(--table)}
+.chart-scale{font-size:12px;color:var(--accent)}
+.chart-group{padding:12px 0;border-top:1px solid var(--line)}
+.chart-name{font:600 13px ui-monospace,monospace;overflow-wrap:anywhere;margin-bottom:8px}
+.chart-row{display:grid;grid-template-columns:minmax(70px,130px) minmax(60px,1fr) 65px;gap:12px;align-items:center;font:12px/1.6 ui-monospace,monospace;margin:5px 0}
+.chart-row>span:first-child{overflow-wrap:anywhere}.chart-row>span:last-child{text-align:right}
+.chart-track{position:relative;height:18px;background:var(--row);border-radius:3px}
+.chart-bar{display:block;height:100%;border-radius:3px;min-width:1px}
+.chart-reference{position:absolute;top:-3px;bottom:-3px;border-left:2px dashed var(--ink);z-index:1}
 @media(max-width:850px){th,td{padding:12px}main{width:calc(100% - 24px);margin:-64px auto;padding:26px 18px 40px}h1{font-size:28px}}
 @media screen and (prefers-color-scheme:dark){:root{--ink:#e5edf3;--accent:#7dd3fc;--sky:#203a4e;--circus-red:#8c3a46;--paper:#17212b;--page:#0e151d;--card-shadow:0 12px 36px #0004;--stripe-white:#c8c3ba;--table:#1c2936;--header-ink:#d3efff;--line:#344b5c;--outline:#456174;--row:#20303e;--hover:#294255}}
 @media print{:root{color-scheme:light}body::before,body::after{display:none}body{background:white;border:0}main{width:100%;max-width:none;margin:0;padding:20px;border:0;box-shadow:none}th{background:#eee;color:#222}}

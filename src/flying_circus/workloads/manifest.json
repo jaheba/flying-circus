@@ -281,5 +281,35 @@
     "compatibility_probe": true,
     "input_bytes": 1000113,
     "fixture_sha256": "10b809e798af1c6e8df976c8e5860d440a5dd48554d8d423920b45ebe822e8a5"
+  },
+  "memory_string_list_short": {
+    "file": "memory_string_list_short.py",
+    "suite": "memory",
+    "stdout": "500000 4000000 00499999\n",
+    "compatibility_probe": true
+  },
+  "memory_string_list_long": {
+    "file": "memory_string_list_long.py",
+    "suite": "memory",
+    "stdout": "500000 32000000 0000000000000000000000000000000000000000000000000000000000499999\n",
+    "compatibility_probe": true
+  },
+  "memory_string_index_short": {
+    "file": "memory_string_index_short.py",
+    "suite": "memory",
+    "stdout": "250000 322210041 8\n",
+    "compatibility_probe": true
+  },
+  "memory_string_index_long": {
+    "file": "memory_string_index_long.py",
+    "suite": "memory",
+    "stdout": "250000 322210041 64\n",
+    "compatibility_probe": true
+  },
+  "memory_customer_records": {
+    "file": "memory_customer_records.py",
+    "suite": "memory",
+    "stdout": "100000 2011174\n",
+    "compatibility_probe": true
   }
 }

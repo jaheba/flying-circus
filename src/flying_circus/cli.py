@@ -7,11 +7,14 @@ from . import bench, compare, report
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(description='Black-box application benchmarks for Monty')
-    parser.add_argument('command', choices=('bench', 'report', 'compare', 'warm', 'run', 'memory', 'overview', 'startup'))
-    if not argv or argv[0] not in ('bench', 'report', 'compare', 'warm', 'run', 'memory', 'overview', 'startup'):
+    parser.add_argument('command', choices=('bench', 'report', 'compare', 'warm', 'run', 'memory', 'overview', 'startup', 'cache'))
+    if not argv or argv[0] not in ('bench', 'report', 'compare', 'warm', 'run', 'memory', 'overview', 'startup', 'cache'):
         from .matrix import main as matrix_main
         return matrix_main(argv)
     command, *arguments = argv
+    if command == 'cache':
+        from .cache import main as cache_main
+        return cache_main(arguments)
     if command == 'startup':
         from .startup import main as startup_main
         return startup_main(arguments)

@@ -56,7 +56,7 @@ def main(argv=None, runtimes=None):
     parser.add_argument('--legacy-cli-summary', action='store_true', help='Strip old Monty CLI stdout summary in cold runs')
     parser.add_argument('--timeout', type=float, default=30)
     parser.add_argument('--workload', action='append')
-    parser.add_argument('--suite', choices=('applications', 'benchmark_game', 'pyperformance', 'text', 'all'), default='applications')
+    parser.add_argument('--suite', choices=('applications', 'benchmark_game', 'pyperformance', 'text', 'memory', 'all'), default='applications')
     parser.add_argument('--output', type=Path, required=True, help='New directory for per-engine result files')
     args = parser.parse_args(argv)
     if runtimes is None and bool(args.cpython) == bool(args.candidate):

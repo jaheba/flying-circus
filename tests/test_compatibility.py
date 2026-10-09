@@ -65,7 +65,8 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(set(games), {'game_fannkuch', 'game_nbody', 'game_pidigits',
                                     'game_spectral_norm', 'game_regex_dna', 'game_meteor_contest'})
         self.assertEqual(len(select_workloads(manifest, 'pyperformance', None)), 6)
-        self.assertEqual(len(select_workloads(manifest, 'all', None)), 32)
+        self.assertEqual(len(select_workloads(manifest, 'memory', None)), 5)
+        self.assertEqual(len(select_workloads(manifest, 'all', None)), 37)
 
     def test_unsupported_engine_does_not_hide_other_timings(self):
         monty, cpython, pypy = run(), run(), run()

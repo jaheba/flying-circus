@@ -2,6 +2,7 @@ import html
 import json
 from pathlib import Path
 
+from .charts import runtime_chart
 from .differences import difference
 from .formatting import measurement, runtime_description, runtime_label, winners, paired_measurements
 from .theme import page
@@ -152,6 +153,7 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
             text = f'<strong>{values[key]}</strong>' if key in best else values[key]
             document += f'<td>{text}</td>'
         document += '</tr></tbody></table></div>'
+    document += runtime_chart(index, runs)
     workload_names = list(first['benchmarks'])
     for metric, heading in (('ms', 'Runtime · ms · one-shot / repeated'), ('rss_mib', 'Peak RSS · MiB · one-shot')):
         paired = metric == 'ms'
