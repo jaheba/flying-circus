@@ -8,3 +8,36 @@ def measurement(value, metric):
     if metric == 'ms':
         return milliseconds(value)
     return 'n/a' if value is None else f'{value:.2f}'
+
+
+def runtime_label(runtime):
+    import re
+
+    label = runtime['label']
+    if re.fullmatch(r'python(?:3(?:\.\d+)*)?', label) or label == 'cpython':
+        return 'CPython'
+    if re.fullmatch(r'pypy(?:3(?:\.\d+)*)?', label):
+        return 'PyPy'
+    if label == 'monty':
+        return 'Monty'
+    if label.startswith('monty-'):
+        return 'Monty ' + label[6:]
+    return label
+
+
+def runtime_version(engine, output):
+    import re
+
+    number = r'(\d+\.\d+(?:\.\d+)?(?:[a-zA-Z][\w.-]*|[-+][\w.-]+)?)'
+    prefix = {'monty': r'monty(?:-runtime)?', 'cpython': r'Python', 'pypy': r'PyPy'}.get(engine)
+    match = re.search(prefix + r'\s+v?' + number, output, re.IGNORECASE) if prefix else None
+    return match.group(1) if match else 'unknown'
+
+
+def runtime_description(runtime, run):
+    engine = runtime.get('engine') or run.get('engine', 'unknown')
+    name = {'monty': 'Monty', 'cpython': 'CPython', 'pypy': 'PyPy'}.get(engine, engine)
+    output = runtime.get('version') or run.get('runtime_version') or runtime.get('revision', '')
+    version = runtime_version(engine, output)
+    label = runtime_label(runtime)
+    return f'{label}: {name} {version}' if label != name else f'{name} {version}'

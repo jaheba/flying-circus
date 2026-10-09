@@ -1,7 +1,7 @@
 import json
 
 from . import matrix_report
-from .formatting import measurement
+from .formatting import measurement, runtime_description, runtime_label
 
 EXTENSIONS = {'html': 'html', 'markdown': 'md', 'json': 'json'}
 
@@ -29,7 +29,7 @@ def markdown(data):
     keys = list(index['runtimes'])
     first = runs['one-shot'][keys[0]]
     diff = data['mode'] == 'diff'
-    headers = [escape(index['runtimes'][key]['label'] + ' · ' + (index['runtimes'][key].get('version') or runs['one-shot'][key].get('runtime_version') or index['runtimes'][key].get('revision', ''))) for key in keys]
+    headers = [escape(runtime_label(index['runtimes'][key])) for key in keys]
     lines = ['# Performance changes' if diff else '# Application benchmarks', '',
              f'- CPU: {escape(first.get("cpu", "Not recorded"))}', f'- OS: {escape(first["platform"])}',
              f'- Samples: {first["configuration"]["samples"]}',
@@ -37,6 +37,7 @@ def markdown(data):
              '- Timing: median ms, one-shot / repeated; startup excluded',
              '- RSS: median MiB, separate one-shot processes including startup',
              '- Startup: empty -c command, launch through exit, normal defaults', '']
+    lines += [' · '.join(escape(runtime_description(index['runtimes'][key], runs['one-shot'][key])) for key in keys), '']
     if diff:
         changes = data['diff']['comparisons']
         visible = [row for row in changes if row['status'] in ('failure', 'compatibility change', 'regression', 'improvement')]

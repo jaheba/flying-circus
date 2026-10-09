@@ -35,7 +35,7 @@ class OverviewTests(unittest.TestCase):
             self.assertIn('data-repeated=', document)
             self.assertNotIn('<strong>10</strong>', document)
             self.assertIn('10 / 5', document)
-            self.assertIn('runtime-version', document)
+            self.assertIn('runtime-info', document)
             self.assertNotIn('<strong>2</strong>', document)
             self.assertIn('CPU</dt><dd>Not recorded', document)
             self.assertNotIn('Median application request latency.', document)

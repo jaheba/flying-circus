@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from .differences import difference
-from .formatting import measurement
+from .formatting import measurement, runtime_description, runtime_label
 from .theme import page
 
 MODES = ('one-shot', 'repeated')
@@ -101,11 +101,8 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
     document += '<details><summary>Measurement details</summary><dl class="facts">'
     document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[3:]) + '</dl></details>'
     def header(key):
-        runtime = index['runtimes'][key]
-        version = runtime.get('version') or runs['one-shot'][key].get('runtime_version') or runtime.get('revision', '')
-        return f'<th>{esc(runtime["label"])}<span class="runtime-version">{esc(version)}</span></th>'
-    if diff:
-        document += '<p>' + ' · '.join(esc(index['runtimes'][key]['label']) + ': ' + esc(index['runtimes'][key].get('version') or runs['one-shot'][key].get('runtime_version') or index['runtimes'][key].get('revision', '')) for key in keys) + '</p>'
+        return f'<th>{esc(runtime_label(index["runtimes"][key]))}</th>'
+    document += '<p class="runtime-info">' + ' · '.join(esc(runtime_description(index['runtimes'][key], runs['one-shot'][key])) for key in keys) + '</p>'
     document += '<details><summary>Runtimes and build details</summary>'
     for key in keys:
         runtime = index['runtimes'][key]

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .compare import compare_runs
 from .machine import cpu_info
-from .formatting import measurement
+from .formatting import measurement, runtime_description
 from .theme import page
 
 
@@ -69,8 +69,8 @@ def render(directory):
     document += '</details>'
     labels = {'monty': 'Monty', 'cpython': 'CPython', 'pypy': 'PyPy'}
     def header(engine):
-        version = first[engine].get('runtime_version', first[engine]['revision'])
-        return f'<th>{labels[engine]}<span class="runtime-version">{escape(version)}</span></th>'
+        return f'<th>{labels[engine]}</th>'
+    document += '<p class="runtime-info">' + ' · '.join(escape(runtime_description({'label': engine, 'engine': engine}, result)) for engine, result in first.items()) + '</p>'
     startup_path = directory / 'startup.json'
     if startup_path.exists():
         startup = json.loads(startup_path.read_text())
