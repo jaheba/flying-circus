@@ -40,10 +40,10 @@ def resolve(spec, timeout=30):
 def resolve_all(specs, timeout=30):
     runtimes = {}
     labels = set()
-    for index, spec in enumerate(specs):
+    for spec in specs:
         runtime = resolve(spec, timeout)
         if runtime['label'] in labels:
             raise ValueError(f'Duplicate runtime label: {runtime["label"]}; use distinct label=executable arguments')
         labels.add(runtime['label'])
-        runtimes[f'runtime_{index}'] = runtime
+        runtimes[runtime['label']] = runtime
     return runtimes

@@ -96,7 +96,10 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
         facts += [('Reference', index['runtimes'][keys[0]]['label']),
                   ('Threshold', f'{threshold:g}% and {absolute_ms:g} ms for timings'),
                   ('Evidence', 'Bootstrap median-ratio bounds · 95% family level · Bonferroni correction')]
-    document = f'<h1>{title}</h1><dl class="facts">'
+    document = f'<h1>{title}</h1>'
+    if index.get('options', {}).get('quick'):
+        document += '<p>Quick run · reduced sampling for a rough comparison. Repeat with default settings to confirm changes.</p>'
+    document += '<dl class="facts">'
     document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[:3]) + '</dl>'
     document += '<details><summary>Measurement details</summary><dl class="facts">'
     document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[3:]) + '</dl></details>'

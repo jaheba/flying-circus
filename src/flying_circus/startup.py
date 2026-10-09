@@ -5,6 +5,7 @@ import platform
 import random
 import statistics
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +14,7 @@ from .bench import digest, validate
 from .machine import cpu_info
 
 
-def measure(runs, samples, timeout, tolerate_errors=False):
+def measure(runs, samples, timeout, tolerate_errors=False, verbose=False):
     schedule = list(runs) * samples
     random.Random(0).shuffle(schedule)
     results = {}
@@ -31,16 +32,22 @@ def measure(runs, samples, timeout, tolerate_errors=False):
         record = results[engine]
         if record['errors']:
             continue
+        label = runs[engine].get('runtime_label', engine)
+        if verbose:
+            print(f'{label}: startup sample {len(record["wall_seconds"]) + 1}/{samples}', flush=True)
         try:
             started = time.perf_counter_ns()
             result = subprocess.run(record['command'], capture_output=True, text=True, timeout=timeout)
             elapsed = (time.perf_counter_ns() - started) / 1e9
             validate(result, '', runs[engine]['configuration'].get('legacy_cli_summary', False))
             record['wall_seconds'].append(elapsed)
+            if verbose:
+                print(f'{label}: startup {elapsed * 1000:.3g} ms', flush=True)
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             if not tolerate_errors:
                 raise
             record['errors'].append(str(error))
+            print(f'{label}: startup failed: {error}', file=sys.stderr, flush=True)
     for record in results.values():
         record['median_wall_seconds'] = statistics.median(record['wall_seconds']) if record['wall_seconds'] else None
     return {'schema_version': 1, 'scenario': 'empty_command_process', 'samples': samples,

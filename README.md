@@ -49,6 +49,28 @@ flying-circus -r python3.14 -r pypy3 --samples 30 --memory-samples 5 --startup-s
 flying-circus --diff -r before=/path/to/baseline -r after=/path/to/candidate --threshold 5
 ```
 
+For a quick full-suite comparison, use `--quick`:
+
+```sh
+flying-circus --quick -r monty=/path/to/monty -r python3.14 -r pypy3
+flying-circus --quick --samples 10 -r before=/path/to/old -r after=/path/to/new --diff
+```
+
+| Setting | Default | Quick |
+| --- | --- | --- |
+| Timing samples per workload, runtime and scenario | 20 | 3 |
+| Startup samples per runtime | 50 | 5 |
+| Repeated warmups per workload | 3 | 1 |
+| Separate RSS samples per workload | 3 (10 with `--diff`) | 1 |
+| Per-request timeout | 30 seconds | 30 seconds |
+
+Explicit sample and warmup flags override the preset, regardless of argument order.
+Quick mode still runs every workload in both one-shot and repeated scenarios, with output validation and compatibility checks.
+It provides a rough comparison; PyPy's repeated results are especially sensitive to the reduced warmup count.
+Reports mark quick runs, and raw metadata records the actual settings.
+With fewer than ten timing samples, `--diff` records meaningful timing changes as inconclusive rather than significant.
+RSS collection defaults to zero on platforms other than Linux and macOS.
+
 `--diff` compares every later runtime against the first. Its report shows improvements, regressions, compatibility
 changes and failures, and writes all classifications (including inconclusive changes) to `diff.json`.
 A timing change must exceed both the percentage threshold (default 5%) and the absolute threshold
@@ -454,3 +476,13 @@ Pages must use GitHub Actions as its publishing source.
 The workflow uses GitHub's standard Pages artifact deployment, with Pages write and OIDC permissions confined to the deploy job.
 
 Published benchmark names link to their workload source at the exact harness commit used for that run.
+
+Use `-v` or `--verbose` to see compatibility checks, the benchmark currently running,
+warmups, individual timing and RSS samples, and median results:
+
+```sh
+flying-circus --quick -v -r monty -r python3 -r pypy3
+```
+
+Without verbose output, the CLI shows run phases and report paths. Failures are
+always printed to stderr.

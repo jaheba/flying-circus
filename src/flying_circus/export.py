@@ -38,6 +38,8 @@ def markdown(data):
              '- RSS: median MiB, separate one-shot processes including startup',
              '- Startup: empty -c command, launch through exit, normal defaults', '']
     lines += [' · '.join(escape(runtime_description(index['runtimes'][key], runs['one-shot'][key])) for key in keys), '']
+    if index.get('options', {}).get('quick'):
+        lines += ['Quick run: reduced sampling for a rough comparison. Repeat with default settings to confirm changes.', '']
     if diff:
         changes = data['diff']['comparisons']
         visible = [row for row in changes if row['status'] in ('failure', 'compatibility change', 'regression', 'improvement')]

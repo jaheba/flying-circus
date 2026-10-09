@@ -35,6 +35,7 @@ def one_shot_worker(cls, binary, timeout, code, filename, setup=""):
 
 def main(argv=None, runtimes=None):
     parser = argparse.ArgumentParser(description='Compare one-shot and repeated applications on Monty, CPython and optional PyPy')
+    parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('--monty', type=Path, required=runtimes is None)
     parser.add_argument('--cpython', type=Path)
     parser.add_argument('--candidate', type=Path, help='Compare a second Monty binary instead of CPython')
@@ -97,6 +98,11 @@ def main(argv=None, runtimes=None):
                                'revision': getattr(args, engine + '_revision'),
                                'build_info': getattr(args, engine + '_build_info')}
     binaries = {key: Path(runtime['binary']).resolve(strict=True) for key, runtime in runtimes.items()}
+    labels = {key: runtime.get('label', key) for key, runtime in runtimes.items()}
+    def log(message):
+        if args.verbose:
+            print(message, flush=True)
+
     engine_types = {key: runtime['engine'] for key, runtime in runtimes.items()}
     def legacy(key):
         return runtimes[key].get('legacy_cli_summary', args.legacy_cli_summary) and engine_types[key] == 'monty'
@@ -139,13 +145,14 @@ def main(argv=None, runtimes=None):
             spec = manifest[name]
             if not spec.get('compatibility_probe'):
                 continue
+            log(f'{labels[engine]}/{name}: checking compatibility')
             check = probe_workload(cls, binary, args.timeout, sources[name], spec['file'], spec['stdout'],
                                    spec.get('known_missing', ()))
             record = results[engine]['benchmarks'][name]
             record['compatibility'] = check
             if check['status'] == 'failed':
                 record['errors'].append(check['reason'])
-            print(f"check {engine}/{name}: {check['status']} {check['reason']}", flush=True)
+            log(f"{labels[engine]}/{name}: {check['status']} {check['reason']}")
 
     def supported(engine, name):
         check = results[engine]['benchmarks'][name].get('compatibility')
@@ -177,11 +184,12 @@ def main(argv=None, runtimes=None):
                 worker.ready()
                 results[engine]['worker_ready_seconds'] = (time.perf_counter_ns() - start) / 1e9
                 workers[engine] = worker
-            for _ in range(args.warmups):
+            for warmup in range(1, args.warmups + 1):
                 for engine in workers:
                     for name in names:
                         if not supported(engine, name):
                             continue
+                        log(f'{labels[engine]}/{name}: warmup {warmup}/{args.warmups}')
                         try:
                             elapsed, _, _ = execute(workers[engine], name)
                             results[engine]['benchmarks'][name]['warmup_wall_seconds'].append(elapsed)
@@ -196,6 +204,7 @@ def main(argv=None, runtimes=None):
                 if not supported(engine, name):
                     continue
                 record = results[engine]['benchmarks'][name]
+                log(f'{labels[engine]}/{name}: timing sample {len(record["wall_seconds"]) + 1}/{args.samples}')
                 try:
                     if args.scenario == 'repeated_requests':
                         elapsed, setup, reset = execute(workers[engine], name)
@@ -229,6 +238,7 @@ def main(argv=None, runtimes=None):
                         workers[engine] = replacement
                     continue
                 record['wall_seconds'].append(elapsed)
+                log(f'{labels[engine]}/{name}: {elapsed * 1000:.3g} ms')
                 if setup is not None:
                     record['session_setup_seconds'].append(setup)
                 if reset is not None:
@@ -241,10 +251,12 @@ def main(argv=None, runtimes=None):
                 continue
             spec = manifest[name]
             try:
-                for _ in range(args.memory_samples):
+                for sample in range(1, args.memory_samples + 1):
+                    log(f'{labels[engine]}/{name}: RSS sample {sample}/{args.memory_samples}')
                     record['peak_rss_bytes'].append(collect(
                         binaries[engine], engine_types[engine], args.scenario, ROOT / 'workloads' / spec['file'],
                         spec['stdout'], args.timeout, legacy(engine)))
+                    log(f'{labels[engine]}/{name}: RSS {record["peak_rss_bytes"][-1] / 1048576:.3g} MiB')
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
                 record['errors'].append({'phase': 'memory', 'message': str(error)})
             if args.memory_samples:
@@ -267,7 +279,11 @@ def main(argv=None, runtimes=None):
             for phase in ('setup', 'reset'):
                 durations = record[f'session_{phase}_seconds']
                 record[f'median_session_{phase}_seconds'] = statistics.median(durations) if durations else None
-            print(f"{engine}/{name}: {record['status']}, median={record['median_wall_seconds']} s")
+            median = record['median_wall_seconds']
+            timing = f'{median * 1000:.3g} ms' if median is not None else 'n/a'
+            log(f"{labels[engine]}/{name}: {record['status']}, median {timing}")
+            if record['status'] == 'failed':
+                print(f"{labels[engine]}/{name}: failed: {record['errors']}", file=sys.stderr, flush=True)
         with (args.output / f'{engine}.json').open('x') as destination:
             json.dump(result, destination, indent=2)
             destination.write('\n')
