@@ -1,47 +1,44 @@
 import html
 import math
 
-from .formatting import runtime_label
 
-
-def runtime_chart(index, runs):
-    runtimes = index['runtimes']
-    baseline = next((key for key, runtime in runtimes.items() if runtime['engine'] == 'cpython'), None)
-    if baseline is None or len(runtimes) < 2:
-        return ''
-    esc = lambda value: html.escape(str(value), quote=True)
-    reference = runtime_label(runtimes[baseline])
-    document = f'<h2>Runtime relative to {esc(reference)}</h2>'
-    document += '<p>CPython = 1× · lower is faster · median runtime, startup excluded.</p>'
-    colors = ('#38a9dc', '#e16370', '#a48ae0', '#43b5a2', '#dfaa45')
-    for mode in ('one-shot', 'repeated'):
-        rows = []
-        for name, base in runs[mode][baseline]['benchmarks'].items():
-            denominator = base.get('median_wall_seconds')
-            if base['status'] != 'ok' or not denominator or not math.isfinite(denominator):
-                continue
-            values = []
-            for key in runtimes:
-                if key == baseline:
+def relative_values(index, runs, field='median_wall_seconds'):
+    baseline = next((key for key, runtime in index['runtimes'].items() if runtime['engine'] == 'cpython'), None)
+    ratios = {}
+    if baseline is not None and len(index['runtimes']) > 1:
+        for mode, engines in runs.items():
+            for name, reference in engines[baseline]['benchmarks'].items():
+                denominator = reference.get(field)
+                if reference['status'] != 'ok' or not denominator or not math.isfinite(denominator):
                     continue
-                record = runs[mode][key]['benchmarks'][name]
-                value = record.get('median_wall_seconds')
-                ratio = value / denominator if record['status'] == 'ok' and value is not None else None
-                values.append((key, ratio if ratio is not None and math.isfinite(ratio) and ratio >= 0 else None))
-            rows.append((name, values))
-        maximum = max([1] + [ratio for _, values in rows for _, ratio in values if ratio is not None])
-        document += f'<details class="runtime-chart"{ " open" if mode == "one-shot" else ""}><summary>{mode.capitalize()}</summary>'
-        document += f'<p class="chart-scale">Shared scale: 0–{maximum:.3g}× · vertical line = 1×</p>'
-        for name, values in rows:
-            document += f'<div class="chart-group"><div class="chart-name">{esc(name)}</div>'
-            for number, (key, ratio) in enumerate(values):
-                label = runtime_label(runtimes[key])
-                text = f'{ratio:.3g}×' if ratio is not None else 'n/a'
-                document += f'<div class="chart-row" aria-label="{esc(name)}: {esc(label)} {text}"><span>{esc(label)}</span>'
-                document += f'<span class="chart-track"><i class="chart-reference" style="left:{100 / maximum:.6f}%"></i>'
-                if ratio is not None:
-                    document += f'<i class="chart-bar" style="width:{100 * ratio / maximum:.6f}%;background:{colors[number % len(colors)]}"></i>'
-                document += f'</span><span>{text}</span></div>'
-            document += '</div>'
-        document += '</details>'
-    return document
+                for key, engine in engines.items():
+                    record = engine['benchmarks'][name]
+                    value = record.get(field)
+                    if record['status'] == 'ok' and value is not None:
+                        ratio = value / denominator
+                        if ratio > 0 and math.isfinite(ratio):
+                            ratios[mode, key, name] = ratio
+    extent = max(1, max([0] + [abs(math.asinh((value - 1) / 0.05)) for value in ratios.values()]))
+    return ratios, extent
+
+
+def inline_chart(ratio, extent, mode, metric='runtime'):
+    if ratio is None:
+        return ''
+    offset = 50 * math.asinh((ratio - 1) / 0.05) / extent
+    outcome = 'better' if ratio < 1 else 'worse' if ratio > 1 else 'equal'
+    comparison = 'less memory' if metric == 'RSS' else 'faster'
+    label = html.escape(f'{mode}: {(ratio - 1) * 100:+.2f}% vs CPython {metric} ({ratio:.3g}×); lower is {comparison}', quote=True)
+    return (f'<span class="inline-chart {outcome}" role="img" aria-label="{label}" title="{label}">'
+            '<i class="chart-reference"></i>'
+            f'<i class="chart-bar" style="bottom:{50 + min(0, -offset):.6f}%;height:{abs(offset):.6f}%"></i></span>')
+
+
+def advantage_order(names, ratios, baseline):
+    if not ratios:
+        return list(names)
+    best = {}
+    for (_, key, name), ratio in ratios.items():
+        if key != baseline:
+            best[name] = min(best.get(name, math.inf), ratio)
+    return sorted(names, key=lambda name: best.get(name, math.inf))

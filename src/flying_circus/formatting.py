@@ -61,3 +61,16 @@ def runtime_description(runtime, run):
 def paired_measurements(values):
     values = list(values)
     return 'n/a' if values and all(value == 'n/a' for value in values) else ' / '.join(values)
+
+
+def duration(seconds):
+    if seconds is None:
+        return 'Not recorded'
+    seconds = round(seconds)
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f'{hours}h {minutes}m {seconds}s'
+    if minutes:
+        return f'{minutes}m {seconds}s'
+    return f'{seconds}s'

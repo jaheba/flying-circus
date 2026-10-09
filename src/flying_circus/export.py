@@ -1,7 +1,7 @@
 import json
 
 from . import matrix_report
-from .formatting import measurement, runtime_description, runtime_label, winners, paired_measurements
+from .formatting import duration, measurement, runtime_description, runtime_label, winners, paired_measurements
 
 EXTENSIONS = {'html': 'html', 'markdown': 'md', 'json': 'json'}
 
@@ -33,6 +33,7 @@ def markdown(data):
     lines = ['# Performance changes' if diff else '# Application benchmarks', '',
              f'- CPU: {escape(first.get("cpu", "Not recorded"))}', f'- OS: {escape(first["platform"])}',
              f'- Samples: {first["configuration"]["samples"]}',
+             f'- Run duration: {duration(index.get("elapsed_seconds"))}',
              f'- Repeated warmups: {runs["repeated"][keys[0]]["configuration"]["warmups"]}',
              '- Timing: median ms, one-shot / repeated; startup excluded',
              '- RSS: median MiB, separate one-shot processes including startup',

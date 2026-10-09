@@ -83,6 +83,8 @@ class MatrixTests(unittest.TestCase):
                         if format == 'json':
                             data = json.loads(document)
                             self.assertEqual(data['schema_version'], 1)
+                            self.assertGreater(data['run']['elapsed_seconds'], 0)
+                            self.assertIn('completed_at', data['run'])
                             self.assertEqual(data['mode'], 'diff' if diff else 'comparison')
                             self.assertEqual(len(data['results']['one-shot']['before']['benchmarks']['startup']['wall_seconds']), 2)
                             self.assertEqual(len(data['startup']['engines']['before']['wall_seconds']), 2)
@@ -93,6 +95,10 @@ class MatrixTests(unittest.TestCase):
                             self.assertLess(document.index('Process startup'), document.index('Runtime · ms'))
                             self.assertIn('<strong>' if format == 'html' else '**', document)
                             self.assertIn('Python ', document)
+                            if format == 'html':
+                                startup_table = document.split('class="startup"', 1)[1].split('</table>', 1)[0]
+                                self.assertIn('CPython runtime', startup_table)
+                                self.assertEqual(startup_table.count('role="img"'), 1)
                 self.assertTrue((output / 'startup.json').is_file())
                 if diff:
                     self.assertTrue(json.loads((output / 'diff.json').read_text()))

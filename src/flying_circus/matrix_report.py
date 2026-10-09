@@ -2,9 +2,9 @@ import html
 import json
 from pathlib import Path
 
-from .charts import runtime_chart
+from .charts import advantage_order, inline_chart, relative_values
 from .differences import difference
-from .formatting import measurement, runtime_description, runtime_label, winners, paired_measurements
+from .formatting import duration, measurement, runtime_description, runtime_label, winners, paired_measurements
 from .theme import page
 
 MODES = ('one-shot', 'repeated')
@@ -88,11 +88,11 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
     esc = lambda value: html.escape(str(value))
     title = 'Performance changes' if diff else 'Application benchmarks'
     facts = [('CPU', first.get('cpu', 'Not recorded')), ('OS', first['platform']),
-             ('Samples', first['configuration']['samples']), ('Repeated warmups', runs['repeated'][keys[0]]['configuration']['warmups']),
+             ('Samples', first['configuration']['samples']), ('Run duration', duration(index.get('elapsed_seconds'))), ('Repeated warmups', runs['repeated'][keys[0]]['configuration']['warmups']),
              ('Timing', 'Median ms · one-shot / repeated · startup excluded'),
              ('RSS', 'Median MiB · separate one-shot processes including startup'),
              ('Startup', 'Empty -c command · launch through exit · normal defaults'),
-             ('Sort', 'Click column headers')]
+             ('Sort', 'Percentage advantage vs CPython · largest improvement first; click headers to reorder')]
     if diff:
         facts += [('Reference', index['runtimes'][keys[0]]['label']),
                   ('Threshold', f'{threshold:g}% and {absolute_ms:g} ms for timings'),
@@ -101,9 +101,9 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
     if index.get('options', {}).get('quick'):
         document += '<p>Quick run · reduced sampling for a rough comparison. Repeat with default settings to confirm changes.</p>'
     document += '<dl class="facts">'
-    document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[:3]) + '</dl>'
+    document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[:4]) + '</dl>'
     document += '<details><summary>Measurement details</summary><dl class="facts">'
-    document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[3:]) + '</dl></details>'
+    document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[4:]) + '</dl></details>'
     def header(key):
         return f'<th>{esc(runtime_label(index["runtimes"][key]))}</th>'
     document += '<p class="runtime-info">' + ' · '.join(esc(runtime_description(index['runtimes'][key], runs['one-shot'][key])) for key in keys) + '</p>'
@@ -143,28 +143,38 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
             document += '</tbody></table></div>'
         document += '<p>Inconclusive changes are recorded in diff.json and excluded from this table. Bootstrap bounds are estimates; repeat runs when results are borderline.</p>'
         return page(title, document), changes
+    chart_baseline = next((key for key, runtime in index['runtimes'].items() if runtime['engine'] == 'cpython'), None)
     if startup.get('engines'):
         document += '<h2>Process startup · ms</h2><div class="table-wrap"><table class="startup"><thead><tr>'
         document += ''.join(header(key) for key in keys) + '</tr></thead><tbody><tr>'
-        values = {key: measurement(entry.get('median_wall_seconds') * 1000, 'ms') if not entry.get('errors') else 'n/a'
+        startup_runs = {'startup': {key: {'benchmarks': {'startup': dict(entry, status='failed' if entry.get('errors') else 'ok')}}
+                                    for key, entry in startup['engines'].items()}}
+        startup_ratios, startup_extent = relative_values(index, startup_runs)
+        values = {key: measurement(entry.get('median_wall_seconds') * 1000, 'ms') if not entry.get('errors') and entry.get('median_wall_seconds') is not None else 'n/a'
                   for key, entry in startup['engines'].items()}
         best = winners(values)
         for key in keys:
             text = f'<strong>{values[key]}</strong>' if key in best else values[key]
-            document += f'<td>{text}</td>'
+            chart = inline_chart(startup_ratios.get(('startup', key, 'startup')), startup_extent, 'startup') if key != chart_baseline else ''
+            document += f'<td><span class="inline-measurement">{text}{chart}</span></td>'
         document += '</tr></tbody></table></div>'
-    document += runtime_chart(index, runs)
     workload_names = list(first['benchmarks'])
     for metric, heading in (('ms', 'Runtime · ms · one-shot / repeated'), ('rss_mib', 'Peak RSS · MiB · one-shot')):
         paired = metric == 'ms'
-        document += f'<h2>{heading}</h2><div class="table-wrap"><table' + (' data-paired="true"' if paired else '') + '><thead><tr><th>Workload</th>'
+        ratios, chart_extent = relative_values(index, runs if paired else {'one-shot': runs['one-shot']},
+                                               'median_wall_seconds' if paired else 'median_peak_rss_bytes')
+        document += f'<h2>{heading}</h2>'
+        if ratios:
+            comparison = 'faster, red below = slower' if paired else 'less memory, red below = more memory'
+            document += f'<p class="chart-legend">Bars: CPython = midpoint · blue above = {comparison} · shared asinh scale (5% transition)</p>'
+        document += '<div class="table-wrap"><table' + (' data-paired="true"' if paired else '') + '><thead><tr><th>Workload</th>'
         document += ''.join(header(key) for key in keys) + '</tr></thead><tbody>'
-        for name in workload_names:
+        for name in advantage_order(workload_names, ratios, chart_baseline):
             source = first['benchmarks'][name].get('source_url', '')
             label = f'<a href="{esc(source)}">{esc(name)}</a>' if source.startswith('https://github.com/') else esc(name)
             document += f'<tr><td>{label}</td>'
             for key in keys:
-                plain, parts, reasons = [], [], []
+                plain, parts, reasons, charts = [], [], [], []
                 for mode in MODES if paired else ('one-shot',):
                     record = runs[mode][key]['benchmarks'][name]
                     field = 'median_wall_seconds' if paired else 'median_peak_rss_bytes'
@@ -180,12 +190,22 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
                     if record['status'] == 'failed':
                         text = 'failed'
                     parts.append(text)
+                    charts.append(inline_chart(ratios.get((mode, key, name)), chart_extent, mode, 'runtime' if paired else 'RSS') if key != chart_baseline else '')
                     if record['status'] != 'ok':
                         reasons.append(mode + ': ' + str(record.get('errors') or record.get('compatibility', {}).get('reason', '')))
                 attrs = f' title="{esc("; ".join(reasons))}"' if reasons else ''
                 if paired:
+                    one = ratios.get(('one-shot', key, name))
+                    repeated = ratios.get(('repeated', key, name))
                     attrs += f' data-one-shot="{plain[0]}" data-repeated="{plain[1]}"'
+                    if ratios:
+                        attrs += f' data-relative-one-shot="{one if one is not None else str()}" data-relative-repeated="{repeated if repeated is not None else str()}"'
+                elif ratios:
+                    ratio = ratios.get(('one-shot', key, name))
+                    attrs += f' data-relative="{ratio if ratio is not None else str()}"'
                 display = paired_measurements(parts)
+                if any(charts):
+                    display = ' / '.join(f'<span class="inline-measurement">{text}{chart}</span>' for text, chart in zip(parts, charts))
                 if display == 'n/a':
                     attrs += ' class="unavailable"'
                 document += f'<td{attrs}>' + display + '</td>'

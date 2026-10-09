@@ -5,6 +5,7 @@ import os
 import platform
 import subprocess
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +59,8 @@ def main(argv=None):
     output = (args.output or default_output()).expanduser().resolve()
     if output.exists():
         parser.error('output directory already exists')
+    started = time.perf_counter()
+    started_at = datetime.now(timezone.utc).isoformat()
     try:
         resolved = runtimes.resolve_all(args.runtime, args.timeout)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
@@ -67,7 +70,7 @@ def main(argv=None):
         print('Quick run: reduced sampling for a rough comparison; repeat with default settings to confirm changes.', flush=True)
     if args.diff and args.samples < 10:
         print('Diff needs at least 10 timing samples per runtime to classify meaningful changes; smaller runs report them as inconclusive.', flush=True)
-    index = {'runtimes': resolved, 'timestamp': datetime.now(timezone.utc).isoformat(), 'options': vars(args)}
+    index = {'runtimes': resolved, 'timestamp': started_at, 'options': vars(args)}
     (output / 'run.json').write_text(json.dumps(index, indent=2, default=str) + '\n')
     failed = False
     runs = {key: {'configuration': {'binary': str(runtime['binary']), 'legacy_cli_summary': runtime['legacy_cli_summary']},
@@ -84,6 +87,9 @@ def main(argv=None):
                                   '--warmups', str(args.warmups if mode == 'repeated' else 0),
                                   '--memory-samples', str(args.memory_samples if mode == 'one-shot' else 0),
                                   '--timeout', str(args.timeout), '--output', str(output / mode)] + (['--verbose'] if args.verbose else []), runtimes=resolved))
+    index['completed_at'] = datetime.now(timezone.utc).isoformat()
+    index['elapsed_seconds'] = time.perf_counter() - started
+    (output / 'run.json').write_text(json.dumps(index, indent=2, default=str) + '\n')
     paths, changes = export.write_reports(output, args.format or ['html'], args.diff, args.threshold, args.absolute_threshold_ms)
     if changes is not None:
         for status in ('regression', 'improvement', 'inconclusive', 'failure', 'compatibility change'):
