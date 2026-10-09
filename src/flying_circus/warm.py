@@ -33,7 +33,7 @@ def one_shot_worker(cls, binary, timeout, code, filename, setup=""):
     return stdout, stderr, (completed - configured) / 1e9, (configured - ready) / 1e9, (ready - started) / 1e9
 
 
-def main(argv=None, runtimes=None):
+def main(argv=None, runtimes=None, manifest_override=None):
     parser = argparse.ArgumentParser(description='Compare one-shot and repeated applications on Monty, CPython and optional PyPy')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('--monty', type=Path, required=runtimes is None)
@@ -81,7 +81,7 @@ def main(argv=None, runtimes=None):
         parser.error('--pypy is required with --pypy-revision')
     if args.output.exists():
         parser.error('output directory already exists')
-    manifest = json.loads((ROOT / 'workloads/manifest.json').read_text())
+    manifest = manifest_override if manifest_override is not None else json.loads((ROOT / 'workloads/manifest.json').read_text())
     try:
         names = select_workloads(manifest, args.suite, args.workload)
     except ValueError as error:
@@ -117,7 +117,7 @@ def main(argv=None, runtimes=None):
             'schema_version': 1, 'revision': runtimes[engine]['revision'], 'runtime_label': runtimes[engine].get('label', engine),
             'build_info': runtimes[engine]['build_info'], 'engine': engine_types[engine],
             'runtime_version': runtimes[engine].get('version', runtimes[engine]['revision']),
-            'binary_sha256': digest(binary), 'manifest_sha256': digest(ROOT / 'workloads/manifest.json'),
+            'binary_sha256': digest(binary), 'manifest_sha256': hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
             'harness_sha256': harness_hash, 'memory_helper_sha256': helper_hash(ROOT),
             'timestamp': datetime.now(timezone.utc).isoformat(), 'machine': platform.node(),
             'cpu': cpu, 'platform': platform.platform(), 'architecture': platform.machine(),
@@ -130,7 +130,7 @@ def main(argv=None, runtimes=None):
         }
         for name in names:
             results[engine]['benchmarks'][name] = {
-                'source_file': manifest[name]['file'], 'input_bytes': manifest[name].get('input_bytes'), 'fixture_sha256': manifest[name].get('fixture_sha256'),
+                'source_file': manifest[name]['file'], 'original_source': manifest[name].get('original_source'), 'input_bytes': manifest[name].get('input_bytes'), 'fixture_sha256': manifest[name].get('fixture_sha256'),
                 'fixture_setup': 'outside request timing' if setups[name] and args.scenario != 'cold_process_one_shot' else 'included in process timing',
                 'scenario': args.scenario, 'upstream': manifest[name].get('upstream'),
                 'workload_sha256': digest(ROOT / 'workloads' / manifest[name]['file']),

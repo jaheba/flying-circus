@@ -526,3 +526,28 @@ RSS includes interpreter startup, allocator overhead and temporary allocations;
 it measures the process peak rather than the exact size of retained strings.
 Compare before/after binaries on the same host using `--diff`. Use the longer
 string variants as controls when interpreting gains in the short variants.
+
+## Custom benchmarks
+
+Run a temporary standalone Python file from a playground against a cached baseline:
+
+```sh
+flying-circus --quick --diff --benchmark /path/to/playground/string_test.py \
+  -r baseline=@main -r candidate=/path/to/monty
+```
+
+Repeat `--benchmark` for multiple files.
+Providing custom files runs only those files; add `--include-defaults` to also run the built-in suite.
+Custom files must have unique stems, including against built-in names when extending the suite.
+They receive the same startup, one-shot, repeated, compatibility and RSS measurements as built-in workloads.
+
+Write a standalone script with deterministic stdout and assertions that validate its result.
+Flying Circus copies each script into the result directory's `workloads/` folder and saves its manifest in `workloads.json`.
+One untimed reference execution with the harness CPython captures expected stdout before measurement.
+Every measured runtime must produce that output without stderr.
+The reference execution runs on the host, so use scripts you trust, without filesystem or other external side effects.
+Sibling modules and data files are not copied; keep temporary benchmarks self-contained.
+
+Build inputs inside the script, or put fixture preparation above a `# --- benchmark ---` line to exclude it from request timing.
+Keep memory allocations alive through validation when measuring retained objects.
+Source snapshots and hashes remain in the result directory even if the playground script is later edited or deleted.

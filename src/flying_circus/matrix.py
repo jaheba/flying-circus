@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import export, runtimes, startup, warm
-from .bench import digest
+from .bench import ROOT, digest
+from .custom import prepare_benchmarks
 
 
 def default_output():
@@ -33,6 +34,8 @@ def main(argv=None):
     parser.add_argument('--output', type=Path, help='New result directory; defaults to the user application-data directory')
     parser.add_argument('--format', choices=('html', 'markdown', 'json'), action='append',
                         help='Report format; repeat to write multiple formats (default: html)')
+    parser.add_argument('--benchmark', action='append', type=Path, help='Custom standalone Python file; repeat to run multiple files instead of the built-in suite')
+    parser.add_argument('--include-defaults', action='store_true', help='Run built-in benchmarks alongside --benchmark files')
     parser.add_argument('--quick', action='store_true',
                         help='Quick full-suite run: 3 timing samples, 5 startup samples, 1 warmup and 1 RSS sample; explicit counts override these defaults')
     parser.add_argument('--samples', type=int, help='Timing samples per workload, runtime and scenario (default: 20; quick: 3)')
@@ -56,6 +59,8 @@ def main(argv=None):
         parser.error('thresholds must be finite and nonnegative; timeout must be finite and positive')
     if args.memory_samples and sys.platform not in ('linux', 'darwin'):
         parser.error('RSS collection supports Linux and macOS; use --memory-samples 0')
+    if args.include_defaults and not args.benchmark:
+        parser.error('--include-defaults requires --benchmark')
     output = (args.output or default_output()).expanduser().resolve()
     if output.exists():
         parser.error('output directory already exists')
@@ -72,6 +77,14 @@ def main(argv=None):
         print('Diff needs at least 10 timing samples per runtime to classify meaningful changes; smaller runs report them as inconclusive.', flush=True)
     index = {'runtimes': resolved, 'timestamp': started_at, 'options': vars(args)}
     (output / 'run.json').write_text(json.dumps(index, indent=2, default=str) + '\n')
+    custom_manifest = None
+    if args.benchmark:
+        defaults = json.loads((ROOT / 'workloads/manifest.json').read_text()) if args.include_defaults else {}
+        print('Preparing custom benchmarks: capturing expected output with harness CPython', flush=True)
+        try:
+            custom_manifest = prepare_benchmarks(args.benchmark, output, args.timeout, defaults)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            parser.error(str(error))
     failed = False
     runs = {key: {'configuration': {'binary': str(runtime['binary']), 'legacy_cli_summary': runtime['legacy_cli_summary']},
                   'binary_sha256': digest(runtime['binary']), 'revision': runtime['revision'], 'runtime_label': runtime['label'],
@@ -86,7 +99,7 @@ def main(argv=None):
         failed |= bool(warm.main(['--suite', 'all', '--scenario', scenario, '--samples', str(args.samples),
                                   '--warmups', str(args.warmups if mode == 'repeated' else 0),
                                   '--memory-samples', str(args.memory_samples if mode == 'one-shot' else 0),
-                                  '--timeout', str(args.timeout), '--output', str(output / mode)] + (['--verbose'] if args.verbose else []), runtimes=resolved))
+                                  '--timeout', str(args.timeout), '--output', str(output / mode)] + (['--verbose'] if args.verbose else []), runtimes=resolved, **({'manifest_override': custom_manifest} if custom_manifest is not None else {})))
     index['completed_at'] = datetime.now(timezone.utc).isoformat()
     index['elapsed_seconds'] = time.perf_counter() - started
     (output / 'run.json').write_text(json.dumps(index, indent=2, default=str) + '\n')
