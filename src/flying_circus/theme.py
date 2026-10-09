@@ -2,31 +2,31 @@ import html
 
 
 STYLE = """
-:root{color-scheme:light;--ink:#172b3a;--accent:#087ca7;--sky:#dff3ff;--circus-red:#c92b38;--paper:#fffdf9}
+:root{color-scheme:light dark;--ink:#172b3a;--accent:#087ca7;--sky:#dff3ff;--circus-red:#c92b38;--paper:#fffdf9;--stripe-white:#fffdf9;--table:#fff;--header-ink:#16405a;--line:#dfedf5;--outline:#bddded;--row:#f4faff;--hover:#e9f6ff}
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.6 system-ui,sans-serif}
 main{width:calc(100% - 48px);max-width:1450px;position:relative;z-index:1;margin:-64px auto;padding:38px max(4vw,24px) 70px;background:var(--paper);border-top:5px solid #64c7f2;box-shadow:none}
-body::before,body::after{content:"";display:block;height:112px;background:repeating-linear-gradient(90deg,var(--circus-red) 0 24px,var(--paper) 24px 48px)}
+body::before,body::after{content:"";display:block;height:112px;background:repeating-linear-gradient(90deg,var(--circus-red) 0 24px,var(--stripe-white) 24px 48px)}
 h1{font:700 36px/1.2 Georgia,serif;letter-spacing:-.025em;margin:0 0 24px}
 h2{font-size:21px;margin:40px 0 16px}
 p{max-width:960px}
 .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:16px 30px;margin:24px 0}
-.facts div{border-bottom:1px solid #d5e8f2;padding-bottom:10px}
+.facts div{border-bottom:1px solid var(--line);padding-bottom:10px}
 .facts dt{font:700 11px ui-monospace,monospace;text-transform:uppercase;color:var(--accent)}
 .facts dd{margin:6px 0 0;font:13px/1.6 ui-monospace,monospace}
 a{color:var(--accent)}
 a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 details{margin-top:24px}summary{cursor:pointer;color:var(--accent)}
-.table-wrap{overflow-x:auto;margin:20px 0 40px;border:1px solid #bddded;border-radius:8px}
-table{border-collapse:collapse;width:100%;background:white;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;font-variant-numeric:tabular-nums}
-th,td{text-align:center;padding:14px 18px;border-bottom:1px solid #dfedf5;white-space:nowrap}
-th{background:var(--sky);color:#16405a;font-size:12px}
+.table-wrap{overflow-x:auto;margin:20px 0 40px;border:1px solid var(--outline);border-radius:8px}
+table{border-collapse:collapse;width:100%;background:var(--table);font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;font-variant-numeric:tabular-nums}
+th,td{text-align:center;padding:14px 18px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{background:var(--sky);color:var(--header-ink);font-size:12px}
 .runtime-info{font:13px/1.6 ui-monospace,monospace;color:var(--ink)}
 table:not(.startup) th:first-child,table:not(.startup) td:first-child{text-align:left}
 td:first-child{font-weight:500}
 td.unavailable{text-align:center}
-tbody tr:nth-child(even){background:#f4faff}
-tbody tr:hover{background:#e9f6ff}
+tbody tr:nth-child(even){background:var(--row)}
+tbody tr:hover{background:var(--hover)}
 td[title]{cursor:help;text-decoration:underline dotted;text-underline-offset:4px}
 th button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
 th button+button{margin-left:12px}
@@ -35,7 +35,8 @@ th .sort-controls{display:block;margin-top:6px;font-size:10px;font-weight:400}
 strong{font-weight:800}
 code{font-size:12px;overflow-wrap:anywhere}
 @media(max-width:850px){th,td{padding:12px}main{width:calc(100% - 24px);margin:-64px auto;padding:26px 18px 40px}h1{font-size:28px}}
-@media print{body::before,body::after{display:none}body{background:white;border:0}main{width:100%;max-width:none;margin:0;padding:20px;border:0;box-shadow:none}th{background:#eee;color:#222}}
+@media screen and (prefers-color-scheme:dark){:root{--ink:#e5edf3;--accent:#7dd3fc;--sky:#203a4e;--circus-red:#8c3a46;--paper:#17212b;--stripe-white:#c8c3ba;--table:#1c2936;--header-ink:#d3efff;--line:#344b5c;--outline:#456174;--row:#20303e;--hover:#294255}}
+@media print{:root{color-scheme:light}body::before,body::after{display:none}body{background:white;border:0}main{width:100%;max-width:none;margin:0;padding:20px;border:0;box-shadow:none}th{background:#eee;color:#222}}
 """
 
 SORT_SCRIPT = """
