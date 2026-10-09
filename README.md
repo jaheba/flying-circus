@@ -551,3 +551,7 @@ Sibling modules and data files are not copied; keep temporary benchmarks self-co
 Build inputs inside the script, or put fixture preparation above a `# --- benchmark ---` line to exclude it from request timing.
 Keep memory allocations alive through validation when measuring retained objects.
 Source snapshots and hashes remain in the result directory even if the playground script is later edited or deleted.
+
+`stdout_lines` prints 10,000 short lines (330,000 bytes) and validates the complete output.
+It measures repeated `print` calls and delivery through the worker protocol and harness capture.
+It does not measure terminal rendering or forced flushing after each line.

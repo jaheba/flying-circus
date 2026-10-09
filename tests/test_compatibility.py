@@ -60,13 +60,13 @@ class CompatibilityTests(unittest.TestCase):
 
     def test_selection_keeps_applications_default_and_supports_game_suite(self):
         manifest = json.loads((ROOT / 'workloads/manifest.json').read_text())
-        self.assertEqual(len(select_workloads(manifest, 'applications', None)), 6)
+        self.assertEqual(len(select_workloads(manifest, 'applications', None)), 7)
         games = select_workloads(manifest, 'benchmark_game', None)
         self.assertEqual(set(games), {'game_fannkuch', 'game_nbody', 'game_pidigits',
                                     'game_spectral_norm', 'game_regex_dna', 'game_meteor_contest'})
         self.assertEqual(len(select_workloads(manifest, 'pyperformance', None)), 6)
         self.assertEqual(len(select_workloads(manifest, 'memory', None)), 5)
-        self.assertEqual(len(select_workloads(manifest, 'all', None)), 37)
+        self.assertEqual(len(select_workloads(manifest, 'all', None)), 38)
 
     def test_unsupported_engine_does_not_hide_other_timings(self):
         monty, cpython, pypy = run(), run(), run()

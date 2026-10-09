@@ -31,7 +31,7 @@ class HarnessTests(unittest.TestCase):
             result = json.loads(output.read_text())
             self.assertEqual(set(result['benchmarks']), {
                 'expense_report', 'order_cleanup', 'api_report',
-                'capacity_planning', 'portfolio_risk', 'ticket_search',
+                'capacity_planning', 'portfolio_risk', 'ticket_search', 'stdout_lines',
             })
             for sample in result['benchmarks'].values():
                 self.assertEqual(sample['status'], 'ok')
