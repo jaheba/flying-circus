@@ -1,7 +1,7 @@
 import json
 
 from . import matrix_report
-from .formatting import measurement, runtime_description, runtime_label, winners
+from .formatting import measurement, runtime_description, runtime_label, winners, paired_measurements
 
 EXTENSIONS = {'html': 'html', 'markdown': 'md', 'json': 'json'}
 
@@ -88,7 +88,7 @@ def markdown(data):
                         values[mode, key] = f'**{values[mode, key]}**'
                 source = first['benchmarks'][name].get('source_url', '')
                 label = f'[{escape(name)}]({source})' if source.startswith('https://github.com/') else escape(name)
-                rows.append([label] + [' / '.join(values[mode, key] for mode in modes) for key in keys])
+                rows.append([label] + [paired_measurements(values[mode, key] for mode in modes) for key in keys])
             lines += [f'## {heading}', '', table(['Workload'] + headers, rows), '']
         failures = []
         for mode, results in runs.items():

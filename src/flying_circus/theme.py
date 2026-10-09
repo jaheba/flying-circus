@@ -19,11 +19,12 @@ a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 details{margin-top:24px}summary{cursor:pointer;color:var(--accent)}
 .table-wrap{overflow-x:auto;margin:20px 0 40px;border:1px solid #bddded;border-radius:8px}
 table{border-collapse:collapse;width:100%;background:white;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;font-variant-numeric:tabular-nums}
-th,td{text-align:right;padding:14px 18px;border-bottom:1px solid #dfedf5;white-space:nowrap}
+th,td{text-align:center;padding:14px 18px;border-bottom:1px solid #dfedf5;white-space:nowrap}
 th{background:var(--sky);color:#16405a;font-size:12px}
 .runtime-info{font:13px/1.6 ui-monospace,monospace;color:var(--ink)}
-th:first-child,td:first-child{text-align:left}
+table:not(.startup) th:first-child,table:not(.startup) td:first-child{text-align:left}
 td:first-child{font-weight:500}
+td.unavailable{text-align:center}
 tbody tr:nth-child(even){background:#f4faff}
 tbody tr:hover{background:#e9f6ff}
 td[title]{cursor:help;text-decoration:underline dotted;text-underline-offset:4px}

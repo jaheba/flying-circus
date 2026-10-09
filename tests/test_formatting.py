@@ -42,3 +42,13 @@ class RuntimeFormatTests(unittest.TestCase):
         self.assertEqual(runtime_description(runtime, {'engine': 'pypy'}), 'PyPy 7.3.16')
         self.assertEqual(runtime_label({'label': 'monty-1.0'}), 'Monty 1.0')
         self.assertEqual(runtime_label({'label': 'baseline'}), 'baseline')
+
+
+class PairedMeasurementTests(unittest.TestCase):
+    def test_collapses_only_fully_unavailable_pairs(self):
+        from flying_circus.formatting import paired_measurements
+        self.assertEqual(paired_measurements(['n/a', 'n/a']), 'n/a')
+        self.assertEqual(paired_measurements(['n/a', '1.23']), 'n/a / 1.23')
+        self.assertEqual(paired_measurements(['1.23', 'n/a']), '1.23 / n/a')
+        self.assertEqual(paired_measurements(['failed', 'failed']), 'failed / failed')
+        self.assertEqual(paired_measurements(['<strong>1.23</strong>', '2.34']), '<strong>1.23</strong> / 2.34')

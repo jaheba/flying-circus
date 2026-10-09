@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .compare import compare_runs
 from .machine import cpu_info
-from .formatting import measurement, runtime_description, winners
+from .formatting import measurement, runtime_description, winners, paired_measurements
 from .theme import page
 
 
@@ -82,7 +82,7 @@ def render(directory):
         if startup['engines'].keys() != first.keys():
             raise ValueError('Startup must contain the same engines')
         document += '<h2>Process startup · ms</h2><p>Empty <code>-c ""</code> command · launch through exit · normal interpreter defaults · '
-        document += f'{startup["samples"]} samples · measured separately</p><div class="table-wrap"><table><thead><tr>'
+        document += f'{startup["samples"]} samples · measured separately</p><div class="table-wrap"><table class="startup"><thead><tr>'
         document += ''.join(header(engine) for engine in first)
         document += '</tr></thead><tbody><tr>'
         displays = {}
@@ -126,7 +126,10 @@ def render(directory):
                 attributes = f' title="{escape("; ".join(reasons))}"' if reasons else ''
                 if paired:
                     attributes += f' data-one-shot="{escape(plain[0])}" data-repeated="{escape(plain[1])}"'
-                document += f'<td{attributes}>' + ' / '.join(parts) + '</td>'
+                display = paired_measurements(parts)
+                if display == 'n/a':
+                    attributes += ' class="unavailable"'
+                document += f'<td{attributes}>' + display + '</td>'
             document += '</tr>'
         document += '</tbody></table></div>'
     return page('Application benchmarks', document)

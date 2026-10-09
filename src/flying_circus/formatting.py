@@ -56,3 +56,8 @@ def runtime_description(runtime, run):
     version = runtime_version(engine, output)
     label = runtime_label(runtime)
     return f'{label}: {name} {version}' if label != name else f'{name} {version}'
+
+
+def paired_measurements(values):
+    values = list(values)
+    return 'n/a' if values and all(value == 'n/a' for value in values) else ' / '.join(values)

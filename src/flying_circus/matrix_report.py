@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from .differences import difference
-from .formatting import measurement, runtime_description, runtime_label, winners
+from .formatting import measurement, runtime_description, runtime_label, winners, paired_measurements
 from .theme import page
 
 MODES = ('one-shot', 'repeated')
@@ -140,7 +140,7 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
         document += '<p>Inconclusive changes are recorded in diff.json and excluded from this table. Bootstrap bounds are estimates; repeat runs when results are borderline.</p>'
         return page(title, document), changes
     if startup.get('engines'):
-        document += '<h2>Process startup · ms</h2><div class="table-wrap"><table><thead><tr>'
+        document += '<h2>Process startup · ms</h2><div class="table-wrap"><table class="startup"><thead><tr>'
         document += ''.join(header(key) for key in keys) + '</tr></thead><tbody><tr>'
         values = {key: measurement(entry.get('median_wall_seconds') * 1000, 'ms') if not entry.get('errors') else 'n/a'
                   for key, entry in startup['engines'].items()}
@@ -180,7 +180,10 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
                 attrs = f' title="{esc("; ".join(reasons))}"' if reasons else ''
                 if paired:
                     attrs += f' data-one-shot="{plain[0]}" data-repeated="{plain[1]}"'
-                document += f'<td{attrs}>' + ' / '.join(parts) + '</td>'
+                display = paired_measurements(parts)
+                if display == 'n/a':
+                    attrs += ' class="unavailable"'
+                document += f'<td{attrs}>' + display + '</td>'
             document += '</tr>'
         document += '</tbody></table></div>'
     return page(title, document), None
