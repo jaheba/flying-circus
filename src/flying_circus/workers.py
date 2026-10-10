@@ -112,8 +112,8 @@ class Worker:
 
 
 class MontyWorker(Worker):
-    def __init__(self, binary, timeout):
-        super().__init__([str(binary), 'subprocess'], timeout, True)
+    def __init__(self, binary, timeout, arguments=()):
+        super().__init__([str(binary), *arguments, 'subprocess'], timeout, True)
 
     def request(self, request, expected):
         deadline = time.perf_counter() + self.timeout
@@ -151,9 +151,9 @@ class MontyWorker(Worker):
 
 
 class CPythonWorker(Worker):
-    def __init__(self, binary, timeout):
+    def __init__(self, binary, timeout, arguments=()):
         helper = Path(__file__).with_name('cpython_worker.py')
-        super().__init__([str(binary), '-u', str(helper)], timeout, False)
+        super().__init__([str(binary), *arguments, '-u', str(helper)], timeout, False)
 
     def request(self, request):
         deadline = time.perf_counter() + self.timeout

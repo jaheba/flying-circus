@@ -10,7 +10,7 @@ def main():
 
     request = json.load(sys.stdin)
     cls = MontyWorker if request['engine'] == 'monty' else CPythonWorker
-    with cls(request['binary'], request['timeout']) as worker:
+    with cls(request['binary'], request['timeout'], arguments=request.get('arguments', [])) as worker:
         worker.ready()
         worker.configure(request['filename'])
         setup, code = split_source(request['code'])

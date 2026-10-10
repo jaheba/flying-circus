@@ -2,7 +2,7 @@ import html
 import json
 from pathlib import Path
 
-from .charts import advantage_order, inline_chart, relative_values
+from .charts import advantage_order, chart_reference, inline_chart, relative_values
 from .differences import difference
 from .formatting import duration, measurement, runtime_description, runtime_label, winners, paired_measurements
 from .theme import page
@@ -19,6 +19,8 @@ def load(directory):
     for mode in MODES:
         for key, run in runs[mode].items():
             reference = runs['one-shot'][key]
+            if run['configuration'].get('arguments', []) != reference['configuration'].get('arguments', []):
+                raise ValueError(f'{key}: scenarios differ in runtime arguments')
             for field in ('binary_sha256', 'machine', 'platform', 'architecture', 'harness_sha256', 'memory_helper_sha256'):
                 if run[field] != reference[field]:
                     raise ValueError(f'{key}: scenarios differ in {field}')
@@ -88,11 +90,11 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
     esc = lambda value: html.escape(str(value))
     title = 'Performance changes' if diff else 'Application benchmarks'
     facts = [('CPU', first.get('cpu', 'Not recorded')), ('OS', first['platform']),
-             ('Samples', first['configuration']['samples']), ('Run duration', duration(index.get('elapsed_seconds'))), ('Repeated warmups', runs['repeated'][keys[0]]['configuration']['warmups']),
+             ('Samples', first['configuration']['samples']), ('Parallel jobs', index.get('options', {}).get('x', 1)), ('Run duration', duration(index.get('elapsed_seconds'))), ('Repeated warmups', runs['repeated'][keys[0]]['configuration']['warmups']),
              ('Timing', 'Median ms · one-shot / repeated · startup excluded'),
              ('RSS', 'Median MiB · separate one-shot processes including startup'),
              ('Startup', 'Empty -c command · launch through exit · normal defaults'),
-             ('Sort', 'Percentage advantage vs CPython · largest improvement first; click headers to reorder')]
+             ('Sort', 'Percentage advantage vs chart reference · largest improvement first; click headers to reorder')]
     if diff:
         facts += [('Reference', index['runtimes'][keys[0]]['label']),
                   ('Threshold', f'{threshold:g}% and {absolute_ms:g} ms for timings'),
@@ -101,9 +103,9 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
     if index.get('options', {}).get('quick'):
         document += '<p>Quick run · reduced sampling for a rough comparison. Repeat with default settings to confirm changes.</p>'
     document += '<dl class="facts">'
-    document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[:4]) + '</dl>'
+    document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[:5]) + '</dl>'
     document += '<details><summary>Measurement details</summary><dl class="facts">'
-    document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[4:]) + '</dl></details>'
+    document += ''.join(f'<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>' for k, v in facts[5:]) + '</dl></details>'
     def header(key):
         return f'<th>{esc(runtime_label(index["runtimes"][key]))}</th>'
     document += '<p class="runtime-info">' + ' · '.join(esc(runtime_description(index['runtimes'][key], runs['one-shot'][key])) for key in keys) + '</p>'
@@ -112,41 +114,23 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
         runtime = index['runtimes'][key]
         run = runs['one-shot'][key]
         document += f'<p><strong>{esc(runtime["label"])}</strong> · {esc(run["engine"])} · {esc(run["revision"])}<br>'
-        document += f'{esc(run["configuration"]["binary"])}<br>{esc(run["build_info"])}<br><code>{run["binary_sha256"]}</code></p>'
+        document += f'{esc(run["configuration"]["binary"])} {esc(" ".join(run["configuration"].get("arguments", [])))}<br>{esc(run["build_info"])}<br><code>{run["binary_sha256"]}</code></p>'
     document += '</details>'
+    changes = diff_results(index, runs, startup, threshold, absolute_ms) if diff else None
+    visible = [row for row in changes or [] if row['status'] in ('failure', 'compatibility change', 'regression', 'improvement')]
     if diff:
-        changes = diff_results(index, runs, startup, threshold, absolute_ms)
-        visible = [row for row in changes if row['status'] not in ('unchanged', 'unavailable', 'inconclusive')]
-        order = {'failure': 0, 'compatibility change': 1, 'regression': 2, 'improvement': 3, 'inconclusive': 4}
-        visible.sort(key=lambda row: (order[row['status']], -abs(row.get('change_percent', 0))))
+        index = dict(index, options=dict(index.get('options', {}), chart_baseline=index['runtimes'][keys[0]]['label']))
         if not visible:
             document += '<p>No significant changes detected.</p>'
         inconclusive = sum(row['status'] == 'inconclusive' for row in changes)
-        document += f'<p>{len(changes)} comparisons · {len(visible)} changes or failures · {inconclusive} inconclusive (see diff.json)</p>'
-        if visible:
-            document += '<div class="table-wrap"><table><thead><tr>'
-            headers = ('Workload', 'Scenario', 'Metric', 'Candidate', 'Result', 'Baseline', 'Candidate value', 'Change', 'Bounds / reason')
-            document += ''.join(f'<th>{h}</th>' for h in headers) + '</tr></thead><tbody>'
-            for row in visible:
-                metric = row['metric']
-                bounds = row.get('interval_percent')
-                detail = f'{bounds[0]:+.1f}% to {bounds[1]:+.1f}%' if bounds else row.get('reason', '')
-                fields = (row['workload'], row['scenario'], 'ms' if metric == 'ms' else 'RSS MiB', row['candidate_label'],
-                          row['status'], measurement(row.get('baseline') if isinstance(row.get('baseline'), (int, float)) else None, metric),
-                          measurement(row.get('candidate') if isinstance(row.get('candidate'), (int, float)) else None, metric),
-                          f'{row["change_percent"]:+.1f}%' if 'change_percent' in row else 'n/a', detail)
-                source = first['benchmarks'].get(row['workload'], {}).get('source_url', '')
-                cells = [esc(v) for v in fields]
-                if source.startswith('https://github.com/'):
-                    cells[0] = f'<a href="{esc(source)}">{cells[0]}</a>'
-                document += '<tr>' + ''.join(f'<td>{v}</td>' for v in cells) + '</tr>'
-            document += '</tbody></table></div>'
-        document += '<p>Inconclusive changes are recorded in diff.json and excluded from this table. Bootstrap bounds are estimates; repeat runs when results are borderline.</p>'
-        return page(title, document), changes
-    chart_baseline = next((key for key, runtime in index['runtimes'].items() if runtime['engine'] == 'cpython'), None)
+        document += f'<p>Reference: {esc(index["runtimes"][keys[0]]["label"])} · {len(visible)} changes or failures · {inconclusive} inconclusive</p>'
+        document += '<div class="diff-filter"><label><input type="checkbox" id="significant-only"> Significant changes only</label><span id="benchmark-count" role="status" aria-live="polite"></span></div>'
+        document += '<details><summary>Comparison evidence</summary><p>The checkbox filters to meaningful changes, failures or compatibility changes. Paired values include both modes for context. All classifications and confidence bounds are retained in diff.json.</p></details>'
+    chart_baseline = chart_reference(index)
+    chart_label = index['runtimes'][chart_baseline]['label']
     if startup.get('engines'):
-        document += '<h2>Process startup · ms</h2><div class="table-wrap"><table class="startup"><thead><tr>'
-        document += ''.join(header(key) for key in keys) + '</tr></thead><tbody><tr>'
+        document += '<section data-diff-section><h2>Process startup · ms</h2><div class="table-wrap"><table class="startup"><thead><tr>'
+        document += ''.join(header(key) for key in keys) + '</tr></thead><tbody><tr' + (f' data-significant="{str(any(row["workload"] == "Process startup" for row in visible)).lower()}"' if diff else '') + '>'
         startup_runs = {'startup': {key: {'benchmarks': {'startup': dict(entry, status='failed' if entry.get('errors') else 'ok')}}
                                     for key, entry in startup['engines'].items()}}
         startup_ratios, startup_extent = relative_values(index, startup_runs)
@@ -155,24 +139,29 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
         best = winners(values)
         for key in keys:
             text = f'<strong>{values[key]}</strong>' if key in best else values[key]
-            chart = inline_chart(startup_ratios.get(('startup', key, 'startup')), startup_extent, 'startup') if key != chart_baseline else ''
+            chart = inline_chart(startup_ratios.get(('startup', key, 'startup')), startup_extent, 'startup', reference=chart_label) if key != chart_baseline else ''
             document += f'<td><span class="inline-measurement">{text}{chart}</span></td>'
-        document += '</tr></tbody></table></div>'
+        document += '</tr></tbody></table></div></section>'
     workload_names = list(first['benchmarks'])
     for metric, heading in (('ms', 'Runtime · ms · one-shot / repeated'), ('rss_mib', 'Peak RSS · MiB · one-shot')):
         paired = metric == 'ms'
         ratios, chart_extent = relative_values(index, runs if paired else {'one-shot': runs['one-shot']},
                                                'median_wall_seconds' if paired else 'median_peak_rss_bytes')
-        document += f'<h2>{heading}</h2>'
+        selected_names = workload_names
+        if not selected_names:
+            continue
+        document += f'<section data-diff-section><h2>{heading}</h2>'
         if ratios:
             comparison = 'faster, red below = slower' if paired else 'less memory, red below = more memory'
-            document += f'<p class="chart-legend">Bars: CPython = midpoint · blue above = {comparison} · shared asinh scale (5% transition)</p>'
+            document += f'<p class="chart-legend">Bars: {esc(chart_label)} = midpoint · blue above = {comparison} · shared asinh scale (5% transition)</p>'
         document += '<div class="table-wrap"><table' + (' data-paired="true"' if paired else '') + '><thead><tr><th>Workload</th>'
         document += ''.join(header(key) for key in keys) + '</tr></thead><tbody>'
-        for name in advantage_order(workload_names, ratios, chart_baseline):
+        for name in advantage_order(selected_names, ratios, chart_baseline):
             source = first['benchmarks'][name].get('source_url', '')
             label = f'<a href="{esc(source)}">{esc(name)}</a>' if source.startswith('https://github.com/') else esc(name)
-            document += f'<tr><td>{label}</td>'
+            significant = any(row['workload'] == name and row['metric'] == metric for row in visible)
+            filter_attrs = f' data-benchmark="{esc(name)}" data-significant="{str(significant).lower()}"' if diff else ''
+            document += f'<tr{filter_attrs}><td>{label}</td>'
             for key in keys:
                 plain, parts, reasons, charts = [], [], [], []
                 for mode in MODES if paired else ('one-shot',):
@@ -190,7 +179,12 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
                     if record['status'] == 'failed':
                         text = 'failed'
                     parts.append(text)
-                    charts.append(inline_chart(ratios.get((mode, key, name)), chart_extent, mode, 'runtime' if paired else 'RSS') if key != chart_baseline else '')
+                    charts.append(inline_chart(ratios.get((mode, key, name)), chart_extent, mode, 'runtime' if paired else 'RSS', reference=chart_label) if key != chart_baseline else '')
+                    if diff:
+                        for change in changes:
+                            if change['workload'] == name and change['metric'] == metric and change['scenario'] == mode and change['candidate_label'] == index['runtimes'][key]['label']:
+                                detail = f"{change['change_percent']:+.2f}%" if 'change_percent' in change else change.get('reason', '')
+                                reasons.append(f"{mode}: {change['status']} {detail}")
                     if record['status'] != 'ok':
                         reasons.append(mode + ': ' + str(record.get('errors') or record.get('compatibility', {}).get('reason', '')))
                 attrs = f' title="{esc("; ".join(reasons))}"' if reasons else ''
@@ -210,5 +204,5 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
                     attrs += ' class="unavailable"'
                 document += f'<td{attrs}>' + display + '</td>'
             document += '</tr>'
-        document += '</tbody></table></div>'
-    return page(title, document), None
+        document += '</tbody></table></div></section>'
+    return page(title, document), changes

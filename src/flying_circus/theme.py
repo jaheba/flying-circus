@@ -34,6 +34,10 @@ th button:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 th .sort-controls{display:block;margin-top:6px;font-size:10px;font-weight:400}
 strong{font-weight:800}
 code{font-size:12px;overflow-wrap:anywhere}
+[hidden]{display:none!important}
+.diff-filter{display:flex;align-items:center;flex-wrap:wrap;gap:12px 24px;margin-top:24px}
+.diff-filter label{cursor:pointer}.diff-filter input{accent-color:var(--accent);margin-right:8px}
+#benchmark-count{font-size:13px;color:var(--accent)}
 .chart-legend{font-size:12px;color:var(--accent)}
 .inline-measurement{display:inline-flex;align-items:center;gap:7px}
 .inline-chart{display:inline-block;position:relative;width:9px;height:28px;background:var(--row);border-radius:2px;vertical-align:middle}
@@ -107,6 +111,22 @@ document.querySelectorAll('table').forEach(table => {
     if (version && !paired) header.append(version);
   });
 });
+const filter = document.getElementById('significant-only');
+if (filter) {
+  const rows = Array.from(document.querySelectorAll('tr[data-significant]'));
+  const benchmarkRows = rows.filter(row => row.dataset.benchmark !== undefined);
+  const total = new Set(benchmarkRows.map(row => row.dataset.benchmark)).size;
+  const update = () => {
+    rows.forEach(row => { row.hidden = filter.checked && row.dataset.significant !== 'true'; });
+    document.querySelectorAll('[data-diff-section]').forEach(section => {
+      section.hidden = !Array.from(section.querySelectorAll('tbody tr')).some(row => !row.hidden);
+    });
+    const visible = new Set(benchmarkRows.filter(row => !row.hidden).map(row => row.dataset.benchmark)).size;
+    document.getElementById('benchmark-count').textContent = visible + ' of ' + total + ' benchmarks';
+  };
+  filter.addEventListener('change', update);
+  update();
+}
 </script>
 """
 

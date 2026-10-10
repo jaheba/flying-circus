@@ -17,15 +17,15 @@ def helper_hash(root):
                                  ('memory.py', 'worker_memory.py', 'memory_collect.py', 'workers.py', 'workload_source.py'))).hexdigest()
 
 
-def collect(binary, engine, scenario, source, expected, timeout, legacy=False):
+def collect(binary, engine, scenario, source, expected, timeout, legacy=False, arguments=()):
     from .bench import memory_sample, validate
 
     if scenario in ('cold_process_one_shot', 'fresh_process'):
-        sample = memory_sample([str(binary), str(source)], timeout)
+        sample = memory_sample([str(binary), *arguments, str(source)], timeout)
         validate(subprocess.CompletedProcess([], sample['returncode'], sample['stdout'], sample['stderr']), expected, legacy)
     elif scenario == 'warm_worker_one_shot':
         request = {'engine': engine, 'binary': str(binary), 'code': source.read_text(),
-                   'filename': source.name, 'timeout': timeout}
+                   'filename': source.name, 'timeout': timeout, 'arguments': list(arguments)}
         result = subprocess.run([sys.executable, '-m', 'flying_circus.worker_memory'],
                                 input=json.dumps(request), capture_output=True, text=True,
                                 timeout=timeout * 3 + 5, check=True)
@@ -93,7 +93,7 @@ def main(argv=None):
                 for _ in range(args.samples):
                     values.append(collect(binary, run.get('engine', engine), record['scenario'], ROOT / 'workloads' / spec['file'],
                                           spec['stdout'], args.timeout,
-                                          run['configuration'].get('legacy_cli_summary', False)))
+                                          run['configuration'].get('legacy_cli_summary', False), arguments=run['configuration'].get('arguments', [])))
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
                 record.setdefault('errors', []).append({'phase': 'memory', 'message': str(error)})
                 record['status'] = 'failed'

@@ -555,3 +555,66 @@ Source snapshots and hashes remain in the result directory even if the playgroun
 `stdout_lines` prints 10,000 short lines (330,000 bytes) and validates the complete output.
 It measures repeated `print` calls and delivery through the worker protocol and harness capture.
 It does not measure terminal rendering or forced flushing after each line.
+
+## Parallel execution
+
+Use `-x N` to run up to N benchmark groups concurrently:
+
+```sh
+flying-circus --quick -x4 -r monty -r python3 -r pypy3
+```
+
+The default is `-x1` (serial).
+Workloads are split across groups; each group keeps its own reused workers for repeated measurements.
+Every workload retains the requested sample counts and output validation.
+Process startup is still measured serially before the groups start.
+Reports record the requested concurrency, and raw scenario results include the active shard count and shard metadata.
+Raw shard results are retained beside the merged results.
+
+Parallel runs compete for CPU, memory bandwidth and caches, so compare optimizations at the same concurrency.
+Reused workers also see fewer prior workloads, which can affect JIT and GC behavior.
+Use serial execution when measuring isolated performance; use parallel execution to assess throughput or contention.
+Reported request times remain per-workload latency, not aggregate throughput.
+
+Comparison charts and percentage sorting use CPython when available, otherwise the first runtime.
+Use `--chart-baseline LABEL` to choose another reference without changing the first runtime used by `--diff`:
+
+```sh
+flying-circus -r baseline=@main -r candidate=/path/to/monty --chart-baseline baseline
+```
+
+Existing comparison results can be rendered with the updated harness without rerunning measurements:
+
+```python
+from pathlib import Path
+from flying_circus.matrix_report import render
+
+results = Path('/path/to/results')
+document, _ = render(results)
+(results / 'report.html').write_text(document)
+```
+
+## Runtime arguments
+
+Use repeatable `--runtime-arg LABEL=ARG` to pass individual arguments to a labeled runtime:
+
+```sh
+flying-circus --diff -r baseline=@main -r optimized=@main \
+  --runtime-arg optimized=--opt
+flying-circus -r python=python3 --runtime-arg python=-X --runtime-arg python=dev
+```
+
+Arguments are inserted after the executable and before `subprocess`, `-c` or a script path.
+Use global runtime flags that work in each execution mode.
+Each occurrence adds exactly one argument; quote values containing spaces instead of bundling several flags into one string.
+The executable's `--version` query is unchanged; execution checks, probes, startup, timing and RSS use the arguments.
+Arguments are recorded in runtime and scenario metadata and shown in HTML runtime details.
+Cached binaries remain unchanged: arguments select behavior for this run.
+
+Diff HTML and Markdown use the same runtime columns and paired values as comparison reports.
+HTML shows all benchmarks initially, with a “Significant changes only” checkbox and a visible benchmark count.
+The checkbox preserves sorting and includes meaningful changes, failures and compatibility changes per metric.
+Markdown remains filtered to those changes.
+HTML bars use the first runtime as the diff reference.
+Both timing modes remain visible when either changes, providing context without a separate row per comparison.
+Hover text includes change classifications; full classifications and confidence bounds remain in `diff.json`.

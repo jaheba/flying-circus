@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from flying_circus.charts import advantage_order, inline_chart, relative_values
+from flying_circus.charts import advantage_order, chart_reference, inline_chart, relative_values
 
 
 class ChartTests(unittest.TestCase):
@@ -51,3 +51,24 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(advantage_order(names, ratios, 'python'),
                          ['large_gain', 'small_gain', 'regression', 'missing'])
         self.assertEqual(advantage_order(names, {}, None), names)
+
+    def test_monty_comparisons_fall_back_to_first_runtime(self):
+        index = {'runtimes': {'old': {'engine': 'monty', 'label': 'baseline'},
+                              'new': {'engine': 'monty', 'label': 'candidate'}}}
+        runs = {'one-shot': {key: {'benchmarks': {'work': {'status': 'ok', 'median_wall_seconds': value}}}
+                             for key, value in [('old', 10), ('new', 9)]}}
+        self.assertEqual(chart_reference(index), 'old')
+        ratios, extent = relative_values(index, runs)
+        self.assertEqual(ratios['one-shot', 'new', 'work'], .9)
+        self.assertIn('vs baseline runtime', inline_chart(.9, extent, 'one-shot', reference='baseline'))
+        index['options'] = {'chart_baseline': 'candidate'}
+        self.assertEqual(chart_reference(index), 'new')
+        ratios, _ = relative_values(index, runs)
+        self.assertAlmostEqual(ratios['one-shot', 'old', 'work'], 10 / 9)
+
+    def test_cpython_is_preferred_unless_explicitly_overridden(self):
+        index = {'runtimes': {'m': {'engine': 'monty', 'label': 'monty'},
+                              'p': {'engine': 'cpython', 'label': 'python'}}}
+        self.assertEqual(chart_reference(index), 'p')
+        index['options'] = {'chart_baseline': 'monty'}
+        self.assertEqual(chart_reference(index), 'm')

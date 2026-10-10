@@ -2,8 +2,16 @@ import html
 import math
 
 
+def chart_reference(index):
+    runtimes = index['runtimes']
+    label = index.get('options', {}).get('chart_baseline')
+    if label is not None:
+        return next(key for key, runtime in runtimes.items() if runtime['label'] == label)
+    return next((key for key, runtime in runtimes.items() if runtime['engine'] == 'cpython'), next(iter(runtimes), None))
+
+
 def relative_values(index, runs, field='median_wall_seconds'):
-    baseline = next((key for key, runtime in index['runtimes'].items() if runtime['engine'] == 'cpython'), None)
+    baseline = chart_reference(index)
     ratios = {}
     if baseline is not None and len(index['runtimes']) > 1:
         for mode, engines in runs.items():
@@ -22,13 +30,13 @@ def relative_values(index, runs, field='median_wall_seconds'):
     return ratios, extent
 
 
-def inline_chart(ratio, extent, mode, metric='runtime'):
+def inline_chart(ratio, extent, mode, metric='runtime', reference='CPython'):
     if ratio is None:
         return ''
     offset = 50 * math.asinh((ratio - 1) / 0.05) / extent
     outcome = 'better' if ratio < 1 else 'worse' if ratio > 1 else 'equal'
     comparison = 'less memory' if metric == 'RSS' else 'faster'
-    label = html.escape(f'{mode}: {(ratio - 1) * 100:+.2f}% vs CPython {metric} ({ratio:.3g}×); lower is {comparison}', quote=True)
+    label = html.escape(f'{mode}: {(ratio - 1) * 100:+.2f}% vs {reference} {metric} ({ratio:.3g}×); lower is {comparison}', quote=True)
     return (f'<span class="inline-chart {outcome}" role="img" aria-label="{label}" title="{label}">'
             '<i class="chart-reference"></i>'
             f'<i class="chart-bar" style="bottom:{50 + min(0, -offset):.6f}%;height:{abs(offset):.6f}%"></i></span>')

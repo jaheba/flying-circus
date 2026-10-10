@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import export, runtimes, startup, warm
+from . import export, parallel, runtimes, startup, warm
 from .bench import ROOT, digest
 from .custom import prepare_benchmarks
 
@@ -29,7 +29,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Compare application performance across Monty, CPython and PyPy binaries')
     parser.add_argument('-r', '--runtime', action='append', required=True, metavar='[LABEL=]EXECUTABLE',
                         help='Repeat for each runtime; executables may be on PATH. First runtime is the diff reference.')
+    parser.add_argument('--runtime-arg', action='append', default=[], metavar='LABEL=ARG', help='Append one argument to a runtime command; repeat for multiple arguments')
     parser.add_argument('-v', '--verbose', action='store_true', help='Show benchmark progress, individual measurements and results')
+    parser.add_argument('-x', type=int, default=1, metavar='JOBS', help='Concurrent benchmark groups (default: 1); contention can affect results')
+    parser.add_argument('--chart-baseline', metavar='LABEL', help='Reference for comparison bars and sorting (default: CPython, otherwise first runtime)')
     parser.add_argument('--diff', action='store_true', help='Show meaningful differences, failures and compatibility changes')
     parser.add_argument('--output', type=Path, help='New result directory; defaults to the user application-data directory')
     parser.add_argument('--format', choices=('html', 'markdown', 'json'), action='append',
@@ -59,17 +62,27 @@ def main(argv=None):
         parser.error('thresholds must be finite and nonnegative; timeout must be finite and positive')
     if args.memory_samples and sys.platform not in ('linux', 'darwin'):
         parser.error('RSS collection supports Linux and macOS; use --memory-samples 0')
+    if args.x < 1:
+        parser.error('-x must be at least 1')
     if args.include_defaults and not args.benchmark:
         parser.error('--include-defaults requires --benchmark')
     output = (args.output or default_output()).expanduser().resolve()
     if output.exists():
         parser.error('output directory already exists')
+    runtime_arguments = {}
+    for item in args.runtime_arg:
+        label, separator, argument = item.partition('=')
+        if not separator or not label or not argument:
+            parser.error('--runtime-arg must be LABEL=ARG')
+        runtime_arguments.setdefault(label, []).append(argument)
     started = time.perf_counter()
     started_at = datetime.now(timezone.utc).isoformat()
     try:
-        resolved = runtimes.resolve_all(args.runtime, args.timeout)
+        resolved = runtimes.resolve_all(args.runtime, args.timeout, runtime_arguments)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         parser.error(str(error))
+    if args.chart_baseline is not None and args.chart_baseline not in {runtime['label'] for runtime in resolved.values()}:
+        parser.error('--chart-baseline must match a runtime label')
     output.mkdir(parents=True)
     if args.quick:
         print('Quick run: reduced sampling for a rough comparison; repeat with default settings to confirm changes.', flush=True)
@@ -86,7 +99,7 @@ def main(argv=None):
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             parser.error(str(error))
     failed = False
-    runs = {key: {'configuration': {'binary': str(runtime['binary']), 'legacy_cli_summary': runtime['legacy_cli_summary']},
+    runs = {key: {'configuration': {'binary': str(runtime['binary']), 'legacy_cli_summary': runtime['legacy_cli_summary'], 'arguments': runtime.get('arguments', [])},
                   'binary_sha256': digest(runtime['binary']), 'revision': runtime['revision'], 'runtime_label': runtime['label'],
                   'machine': platform.node(), 'platform': platform.platform(), 'architecture': platform.machine()}
             for key, runtime in resolved.items()}
@@ -96,10 +109,15 @@ def main(argv=None):
     failed |= any(entry['errors'] for entry in timings['engines'].values())
     for mode, scenario in (('one-shot', 'warm_worker_one_shot'), ('repeated', 'repeated_requests')):
         print(f'Running {mode}: {", ".join(runtime["label"] for runtime in resolved.values())}', flush=True)
-        failed |= bool(warm.main(['--suite', 'all', '--scenario', scenario, '--samples', str(args.samples),
-                                  '--warmups', str(args.warmups if mode == 'repeated' else 0),
-                                  '--memory-samples', str(args.memory_samples if mode == 'one-shot' else 0),
-                                  '--timeout', str(args.timeout), '--output', str(output / mode)] + (['--verbose'] if args.verbose else []), runtimes=resolved, **({'manifest_override': custom_manifest} if custom_manifest is not None else {})))
+        arguments = ['--suite', 'all', '--scenario', scenario, '--samples', str(args.samples),
+                     '--warmups', str(args.warmups if mode == 'repeated' else 0),
+                     '--memory-samples', str(args.memory_samples if mode == 'one-shot' else 0),
+                     '--timeout', str(args.timeout)] + (['--verbose'] if args.verbose else [])
+        if args.x > 1:
+            failed |= bool(parallel.run(arguments, resolved, custom_manifest, output / mode, args.x))
+        else:
+            failed |= bool(warm.main(arguments + ['--output', str(output / mode)], runtimes=resolved,
+                                     **({'manifest_override': custom_manifest} if custom_manifest is not None else {})))
     index['completed_at'] = datetime.now(timezone.utc).isoformat()
     index['elapsed_seconds'] = time.perf_counter() - started
     (output / 'run.json').write_text(json.dumps(index, indent=2, default=str) + '\n')

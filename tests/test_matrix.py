@@ -97,7 +97,7 @@ class MatrixTests(unittest.TestCase):
                             self.assertIn('Python ', document)
                             if format == 'html':
                                 startup_table = document.split('class="startup"', 1)[1].split('</table>', 1)[0]
-                                self.assertIn('CPython runtime', startup_table)
+                                self.assertIn('vs before runtime', startup_table)
                                 self.assertEqual(startup_table.count('role="img"'), 1)
                 self.assertTrue((output / 'startup.json').is_file())
                 if diff:

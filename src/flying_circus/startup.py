@@ -27,7 +27,7 @@ def measure(runs, samples, timeout, tolerate_errors=False, verbose=False):
             if run[field] != current:
                 raise ValueError(f'{engine}: startup must be measured on the application benchmark host')
         results[engine] = {'binary_sha256': run['binary_sha256'], 'revision': run['revision'],
-                           'command': [str(binary), '-c', ''], 'wall_seconds': [], 'errors': []}
+                           'command': [str(binary), *run['configuration'].get('arguments', []), '-c', ''], 'wall_seconds': [], 'errors': []}
     for engine in schedule:
         record = results[engine]
         if record['errors']:

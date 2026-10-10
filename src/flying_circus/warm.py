@@ -11,6 +11,7 @@ import time
 from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
+from functools import partial
 
 from .bench import ROOT, digest, validate
 from .compatibility import probe_workload, select_workloads
@@ -104,6 +105,11 @@ def main(argv=None, runtimes=None, manifest_override=None):
             print(message, flush=True)
 
     engine_types = {key: runtime['engine'] for key, runtime in runtimes.items()}
+    def worker_class(key):
+        cls = MontyWorker if engine_types[key] == 'monty' else CPythonWorker
+        arguments = runtimes[key].get('arguments', [])
+        return partial(cls, arguments=arguments) if arguments else cls
+
     def legacy(key):
         return runtimes[key].get('legacy_cli_summary', args.legacy_cli_summary) and engine_types[key] == 'monty'
     schedule = [(engine, name) for engine in binaries for name in names] * args.samples
@@ -125,7 +131,8 @@ def main(argv=None, runtimes=None, manifest_override=None):
             'protocol_version': PROTOCOL_VERSION if engine_types[engine] == 'monty' else None,
             'configuration': {'samples': args.samples, 'memory_samples': args.memory_samples, 'warmups': args.warmups, 'timeout': args.timeout,
                               'legacy_cli_summary': legacy(engine),
-                              'scenario': args.scenario, 'suite': args.suite, 'binary': str(binary)},
+                              'scenario': args.scenario, 'suite': args.suite, 'binary': str(binary),
+                              'arguments': runtimes[engine].get('arguments', [])},
             'schedule_seed': 0, 'schedule': schedule, 'benchmarks': {},
         }
         for name in names:
@@ -140,7 +147,7 @@ def main(argv=None, runtimes=None, manifest_override=None):
             }
 
     for engine, binary in binaries.items():
-        cls = MontyWorker if engine_types[engine] == 'monty' else CPythonWorker
+        cls = worker_class(engine)
         for name in names:
             spec = manifest[name]
             if not spec.get('compatibility_probe'):
@@ -178,7 +185,7 @@ def main(argv=None, runtimes=None, manifest_override=None):
         workers = {}
         try:
             for engine in binaries if args.scenario == 'repeated_requests' else ():
-                cls = MontyWorker if engine_types[engine] == 'monty' else CPythonWorker
+                cls = worker_class(engine)
                 start = time.perf_counter_ns()
                 worker = stack.enter_context(cls(binaries[engine], args.timeout))
                 worker.ready()
@@ -197,7 +204,7 @@ def main(argv=None, runtimes=None, manifest_override=None):
                             results[engine]['benchmarks'][name]['errors'].append(str(error))
                             failure = str(error)
                             workers[engine].close()
-                            cls = MontyWorker if engine_types[engine] == 'monty' else CPythonWorker
+                            cls = worker_class(engine)
                             workers[engine] = stack.enter_context(cls(binaries[engine], args.timeout))
                             workers[engine].ready()
             for engine, name in schedule:
@@ -209,7 +216,7 @@ def main(argv=None, runtimes=None, manifest_override=None):
                     if args.scenario == 'repeated_requests':
                         elapsed, setup, reset = execute(workers[engine], name)
                     elif args.scenario == 'warm_worker_one_shot':
-                        cls = MontyWorker if engine_types[engine] == 'monty' else CPythonWorker
+                        cls = worker_class(engine)
                         stdout, stderr, elapsed, setup, ready = one_shot_worker(
                             cls, binaries[engine], args.timeout, code[name], manifest[name]['file'], setups[name])
                         if stdout != manifest[name]['stdout'] or stderr:
@@ -219,7 +226,7 @@ def main(argv=None, runtimes=None, manifest_override=None):
                     else:
                         source = ROOT / 'workloads' / manifest[name]['file']
                         started = time.perf_counter_ns()
-                        response = subprocess.run([str(binaries[engine]), str(source)], capture_output=True,
+                        response = subprocess.run([str(binaries[engine]), *runtimes[engine].get('arguments', []), str(source)], capture_output=True,
                                                   text=True, timeout=args.timeout)
                         elapsed = (time.perf_counter_ns() - started) / 1e9
                         validate(response, manifest[name]['stdout'], legacy(engine))
@@ -232,7 +239,7 @@ def main(argv=None, runtimes=None, manifest_override=None):
                     failure = str(error)
                     if args.scenario == 'repeated_requests':
                         workers[engine].__exit__(None, None, None)
-                        cls = MontyWorker if engine_types[engine] == 'monty' else CPythonWorker
+                        cls = worker_class(engine)
                         replacement = stack.enter_context(cls(binaries[engine], args.timeout))
                         replacement.ready()
                         workers[engine] = replacement
@@ -255,7 +262,7 @@ def main(argv=None, runtimes=None, manifest_override=None):
                     log(f'{labels[engine]}/{name}: RSS sample {sample}/{args.memory_samples}')
                     record['peak_rss_bytes'].append(collect(
                         binaries[engine], engine_types[engine], args.scenario, ROOT / 'workloads' / spec['file'],
-                        spec['stdout'], args.timeout, legacy(engine)))
+                        spec['stdout'], args.timeout, legacy(engine), arguments=runtimes[engine].get('arguments', [])))
                     log(f'{labels[engine]}/{name}: RSS {record["peak_rss_bytes"][-1] / 1048576:.3g} MiB')
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
                 record['errors'].append({'phase': 'memory', 'message': str(error)})
