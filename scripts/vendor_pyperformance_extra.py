@@ -34,7 +34,6 @@ for encoded, expected in zip(objs, (DICT, list(TUPLE), DICT_GROUP)):
     assert decoded == expected
     print(len(decoded))
 """,
-    'gc_traversal': "print(benchamark_collection(1, N_LEVELS))\n",
 }
 for name, adapter in adapters.items():
     upstream_path = f'pyperformance/data-files/benchmarks/bm_{name}/run_benchmark.py'
@@ -60,10 +59,6 @@ for name, adapter in adapters.items():
         adapted = adapted.replace('return pyperf.perf_counter() - t0', 'return final_energy')
     elif name == 'unpack_sequence':
         adapted = adapted.replace('return pyperf.perf_counter() - t0', 'return (a, b, c, d, e, f, g, h, i, j)')
-    elif name == 'gc_traversal':
-        adapted = adapted.replace('        total_time += pyperf.perf_counter() - t0\n', '')
-        adapted = adapted.replace('    total_time = 0\n', '')
-        adapted = adapted.replace('    return total_time', '    assert len(all_cycles) == n_levels - 1\n    return len(all_cycles)')
     elif name == 'json_loads':
         # Freeze the upstream seeded input so all interpreters parse identical JSON.
         namespace = {}

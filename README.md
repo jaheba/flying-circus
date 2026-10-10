@@ -372,7 +372,7 @@ flying-circus compare --monty-results results/optimization/monty.json \
   --candidate-results results/optimization/candidate.json --output results/optimization/comparison.html
 ```
 
-The `pyperformance` suite adds Barnes–Hut, float, sequence unpacking, JSON dumps, JSON loads, and GC traversal:
+The `pyperformance` suite adds Barnes–Hut, float, sequence unpacking, JSON dumps, JSON loads. GC traversal is disabled:
 
 ```bash
 just one-shot results/perf-one-shot pyperformance

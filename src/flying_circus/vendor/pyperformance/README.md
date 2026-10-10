@@ -41,7 +41,7 @@ The `pyperformance` suite contains these adapters:
 - JSON loads: all three upstream objects, 20 loads each; checks decoded values.
   The upstream seeded random dictionary group is frozen into the adapter using the generator's CPython.
   Every engine receives identical fixture values, without depending on random-module support or native integer size.
-- GC traversal: the original 1,000-level shared-container graph and two explicit collections.
+- GC traversal (disabled): source retained for reference; excluded from the workload manifest and vendoring script.
   It retains the zero-collected assertion, checks graph size, and prints the outer length.
   A missing `gc` module remains unsupported; the adapter does not emulate garbage collection.
 

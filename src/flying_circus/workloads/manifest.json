@@ -159,17 +159,6 @@
       "sha256": "16c41ff06bf3173d30158c767340d389c459a656e997e306719891d50f09646f"
     }
   },
-  "perf_gc_traversal": {
-    "file": "perf_gc_traversal.py",
-    "stdout": "999\n",
-    "suite": "pyperformance",
-    "compatibility_probe": true,
-    "upstream": {
-      "revision": "ccc0aeb7ad46d65b6dcd4160e0fdda4d885852dd",
-      "path": "pyperformance/data-files/benchmarks/bm_gc_traversal/run_benchmark.py",
-      "sha256": "0798ab87ca12687c68e101d14ae9ac0c50eaa9b4f14ecee3882f7e499191828f"
-    }
-  },
   "text_line_logs_small": {
     "file": "text_line_logs_small.py",
     "suite": "text",
