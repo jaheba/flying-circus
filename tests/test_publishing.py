@@ -43,11 +43,15 @@ class PublishingTests(unittest.TestCase):
             results, builds = root / 'results', root / 'builds'
             results.mkdir()
             index = {'timestamp': '2026-10-09T12:00:00Z', 'runtimes': {}}
-            for key, label in [('old', 'monty-1.0'), ('new', 'monty-1.1')]:
+            for key, label in [('old', 'monty-1.0'), ('new', 'monty-1.1'), ('main', 'monty-main')]:
                 index['runtimes'][key] = {'engine': 'monty', 'label': label}
                 folder = builds / label
                 folder.mkdir(parents=True)
                 metadata = {'label': label, 'package': 'pydantic-monty-runtime', 'package_version': key * 10, 'version': label, 'binary_sha256': key}
+                if key == 'main':
+                    metadata = {'label': label, 'source_repository': 'https://github.com/pydantic/monty',
+                                'revision': 'a' * 40, 'build_command': ['cargo', 'build', '--locked', '--release'],
+                                'rustc_version': 'rustc test', 'version': label, 'binary_sha256': key}
                 (folder / 'package.json').write_text(json.dumps(metadata))
                 for mode in ('one-shot', 'repeated'):
                     (results / mode).mkdir(exist_ok=True)
@@ -59,7 +63,15 @@ class PublishingTests(unittest.TestCase):
             saved = json.loads((results / 'run.json').read_text())
             self.assertEqual(saved['runtimes']['old']['version'], 'monty-1.0')
             self.assertEqual(saved['runtimes']['new']['revision'], 'new' * 10)
-            self.assertEqual(len(json.loads((results / 'build.json').read_text())['monty_packages']), 2)
+            self.assertEqual(len(json.loads((results / 'build.json').read_text())['monty_packages']), 3)
+            self.assertEqual(saved['runtimes']['main']['revision'], 'a' * 40)
+            self.assertIn('cargo build --locked --release', saved['runtimes']['main']['build_info'])
+            self.assertIn('https://github.com/pydantic/monty/commit/' + 'a' * 40,
+                          (root / 'site/index.html').read_text())
+            for mode in ('one-shot', 'repeated'):
+                data = json.loads((results / mode / 'main.json').read_text())
+                self.assertEqual(data['revision'], 'a' * 40)
+                self.assertIn('rustc test', data['build_info'])
             for key in ('old', 'new'):
                 data = json.loads((results / 'repeated' / f'{key}.json').read_text())
                 self.assertEqual(data['revision'], key * 10)

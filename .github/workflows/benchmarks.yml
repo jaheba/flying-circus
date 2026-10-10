@@ -53,6 +53,17 @@ jobs:
         run: |
           uv run --no-sync python scripts/install_monty.py \
             --python '${{ steps.cpython.outputs.python-path }}' --output _runtimes
+      - name: Check out Monty main
+        uses: actions/checkout@v4
+        with:
+          repository: pydantic/monty
+          ref: main
+          path: _monty-main
+          persist-credentials: false
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build Monty main
+        run: uv run --no-sync python scripts/build_monty.py --source _monty-main --output _runtimes
       - name: Restore previous published history
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,6 +79,7 @@ jobs:
         run: |
           uv run --no-sync flying-circus \
             -r monty="$PWD/_runtimes/monty/bin/monty" \
+            -r monty-main="$PWD/_runtimes/monty-main/bin/monty" \
             -r cpython='${{ steps.cpython.outputs.python-path }}' \
             -r pypy='${{ steps.pypy.outputs.python-path }}' \
             --samples 20 --memory-samples 3 --startup-samples 50 --warmups 3 --timeout 120 \

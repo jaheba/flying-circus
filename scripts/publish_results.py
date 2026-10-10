@@ -29,14 +29,19 @@ def publish(results, site, run_id, monty_packages=None):
             if runtime['engine'] != 'monty':
                 continue
             entry = metadata[runtime['label']]
-            info = f'Prebuilt PyPI wheel: {entry["package"]}=={entry["package_version"]}; source revision and compiler flags unverified'
-            runtime.update(revision=entry['package_version'], build_info=info, version=entry['version'])
+            if 'source_repository' in entry:
+                revision = entry['revision']
+                info = f'Source build: {entry["source_repository"]}@{revision}; {" ".join(entry["build_command"])}; {entry["rustc_version"]}'
+            else:
+                revision = entry['package_version']
+                info = f'Prebuilt PyPI wheel: {entry["package"]}=={revision}; source revision and compiler flags unverified'
+            runtime.update(revision=revision, build_info=info, version=entry['version'])
             for mode in ('one-shot', 'repeated'):
                 path = results / mode / f'{key}.json'
                 run = json.loads(path.read_text())
                 if run['binary_sha256'] != entry['binary_sha256']:
-                    raise ValueError('Installed Monty package differs from measured binary')
-                run.update(revision=entry['package_version'], build_info=info, runtime_version=entry['version'])
+                    raise ValueError('Installed Monty runtime differs from measured binary')
+                run.update(revision=revision, build_info=info, runtime_version=entry['version'])
                 path.write_text(json.dumps(run, indent=2) + '\n', encoding='utf-8')
             build['monty_packages'].append(entry)
         (results / 'run.json').write_text(json.dumps(index, indent=2) + '\n', encoding='utf-8')
@@ -77,6 +82,10 @@ def publish(results, site, run_id, monty_packages=None):
                   f'<details><summary>Published run</summary><p>Measured {esc(index["timestamp"])} · GitHub-hosted runner'
                   ' (hardware varies between runs; use within-run comparisons)</p>')
     for entry in build.get('monty_packages', []):
+        if 'source_repository' in entry:
+            url = f'{entry["source_repository"]}/commit/{entry["revision"]}'
+            navigation += f'<p>{esc(entry["label"])}: <a href="{esc(url)}">main at {esc(entry["revision"])}</a></p>'
+            continue
         package, version = entry['package'], entry['package_version']
         navigation += f'<p>{esc(entry["label"])}: <a href="https://pypi.org/project/{esc(package)}/{esc(version)}/">{esc(package)} {esc(version)}</a></p>'
     navigation += '</details>'
