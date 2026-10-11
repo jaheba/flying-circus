@@ -458,12 +458,13 @@ The startup command verifies that the host and binary hashes still match the app
 
 The `Benchmarks and Pages` workflow runs on pushes to `main`, daily at 05:17 UTC, and manually.
 It installs the latest stable `pydantic-monty-runtime` wheel from PyPI with uv and compares its executable with
-CPython 3.14, PyPy 3.11 and Monty's current `main` branch on one `ubuntu-24.04` runner.
+CPython 3.14 and 3.15, PyPy 3.11 and Monty's current `main` branch on one `ubuntu-24.04` runner.
+The CPython runtimes use the `cpython-baseline` (3.14) and `cpython` (3.15) labels.
 The release installation requires binary wheels. The `monty-main` runtime is built from
 `pydantic/monty` with `cargo build --locked --release -p monty-runtime --bin monty` using stable Rust.
 The resolved release package version, main commit, build command, Rust compiler version and binary hashes
 are recorded in each report. The release runtime retains the `monty` label.
-Manual runs can select another CPython or PyPy version.
+Manual runs can select both CPython versions and the PyPy version.
 Each run measures startup first, followed by all workloads in one-shot and repeated scenarios, with separate RSS samples.
 
 GitHub Pages serves the latest report, with Markdown and JSON downloads and an archive of the latest 90 runs.
