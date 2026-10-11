@@ -112,6 +112,72 @@ document.querySelectorAll('table').forEach(table => {
     if (version && !paired) header.append(version);
   });
 });
+const baselineSelector = document.getElementById('chart-baseline');
+if (baselineSelector) {
+  const updateBaseline = () => {
+    const reference = baselineSelector.value;
+    const label = baselineSelector.selectedOptions[0].textContent;
+    document.querySelectorAll('table').forEach(table => {
+      const cells = Array.from(table.querySelectorAll('td[data-values]'));
+      const ratios = new Map();
+      cells.forEach(cell => {
+        const baseline = Array.from(cell.parentElement.cells).find(td => td.dataset.runtime === reference);
+        const values = JSON.parse(cell.dataset.values);
+        const denominators = baseline ? JSON.parse(baseline.dataset.values) : [];
+        ratios.set(cell, values.map((v, i) => v > 0 && denominators[i] > 0 ? v / denominators[i] : null));
+      });
+      const extent = Math.max(1, ...Array.from(ratios.values()).flat().filter(v => v !== null).map(v => Math.abs(Math.asinh((v - 1) / .05))));
+      cells.forEach(cell => {
+        cell.querySelectorAll('.inline-chart').forEach(chart => chart.remove());
+        let spans = Array.from(cell.querySelectorAll('.inline-measurement'));
+        const values = ratios.get(cell);
+        if (!spans.length) {
+          const parts = cell.innerHTML.split(' / ');
+          cell.innerHTML = '';
+          values.forEach((_, i) => {
+            if (i) cell.append(' / ');
+            const span = document.createElement('span');
+            span.className = 'inline-measurement';
+            span.innerHTML = parts[i] || parts[0];
+            cell.append(span);
+          });
+          spans = Array.from(cell.querySelectorAll('.inline-measurement'));
+        }
+        values.forEach((ratio, i) => {
+          const mode = cell.dataset.metric === 'startup' ? 'startup' : i ? 'repeated' : 'one-shot';
+          const attribute = values.length > 1 ? i ? 'relativeRepeated' : 'relativeOneShot' : 'relative';
+          cell.dataset[attribute] = ratio === null ? '' : ratio;
+          if (ratio === null || cell.dataset.runtime === reference) return;
+          const offset = 50 * Math.asinh((ratio - 1) / .05) / extent;
+          const chart = document.createElement('span');
+          chart.className = 'inline-chart ' + (ratio < 1 ? 'better' : ratio > 1 ? 'worse' : 'equal');
+          const description = mode + ': ' + ((ratio - 1) * 100).toFixed(2) + '% vs ' + label + ' ' + cell.dataset.metric + ' (' + ratio.toPrecision(3) + '×); lower is better';
+          chart.setAttribute('role', 'img');
+          chart.setAttribute('aria-label', description);
+          chart.title = description;
+          chart.innerHTML = '<i class="chart-reference"></i><i class="chart-bar"></i>';
+          const bar = chart.lastElementChild;
+          bar.style.bottom = (50 + Math.min(0, -offset)) + '%';
+          bar.style.height = Math.abs(offset) + '%';
+          spans[i].append(chart);
+        });
+      });
+      const body = table.tBodies[0];
+      const advantage = row => Math.min(Infinity, ...Array.from(row.cells).filter(cell => cell.dataset.runtime !== reference).flatMap(cell => ratios.get(cell) || []).filter(v => v !== null));
+      body.append(...Array.from(body.rows).sort((a, b) => advantage(a) - advantage(b)));
+      table.querySelectorAll('th').forEach(header => {
+        header.removeAttribute('aria-sort');
+        header.querySelectorAll('button').forEach(button => {
+          delete button.dataset.direction;
+          button.textContent = button.dataset.label + ' ↕';
+        });
+      });
+      const legend = table.closest('section').querySelector('.chart-legend');
+      if (legend) legend.textContent = legend.textContent.replace(/^Bars: .*? = midpoint/, 'Bars: ' + label + ' = midpoint');
+    });
+  };
+  baselineSelector.addEventListener('change', updateBaseline);
+}
 const filter = document.getElementById('significant-only');
 if (filter) {
   const rows = Array.from(document.querySelectorAll('tr[data-significant]'));

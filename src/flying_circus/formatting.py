@@ -29,12 +29,16 @@ def runtime_label(runtime):
     import re
 
     label = runtime['label']
+    if re.fullmatch(r'python3\.\d+', label):
+        return 'Python ' + label[6:]
     if re.fullmatch(r'python(?:3(?:\.\d+)*)?', label) or label == 'cpython':
         return 'CPython'
     if re.fullmatch(r'pypy(?:3(?:\.\d+)*)?', label):
         return 'PyPy'
     if label == 'monty':
         return 'Monty'
+    if label == 'monty-main':
+        return '@main'
     if label.startswith('monty-'):
         return 'Monty ' + label[6:]
     return label

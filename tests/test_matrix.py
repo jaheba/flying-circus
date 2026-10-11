@@ -96,6 +96,8 @@ class MatrixTests(unittest.TestCase):
                             self.assertIn('<strong>' if format == 'html' else '**', document)
                             self.assertIn('Python ', document)
                             if format == 'html':
+                                self.assertEqual('id="chart-baseline"' in document, not diff)
+                                self.assertIn('data-values=', document)
                                 startup_table = document.split('class="startup"', 1)[1].split('</table>', 1)[0]
                                 self.assertIn('vs before runtime', startup_table)
                                 self.assertEqual(startup_table.count('role="img"'), 1)

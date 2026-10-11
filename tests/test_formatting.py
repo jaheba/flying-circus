@@ -42,6 +42,9 @@ class RuntimeFormatTests(unittest.TestCase):
         self.assertEqual(runtime_description(runtime, {'engine': 'pypy'}), 'PyPy 7.3.16')
         self.assertEqual(runtime_label({'label': 'monty-1.0'}), 'Monty 1.0')
         self.assertEqual(runtime_label({'label': 'baseline'}), 'baseline')
+        self.assertEqual(runtime_label({'label': 'python3.14'}), 'Python 3.14')
+        self.assertEqual(runtime_label({'label': 'python3.15'}), 'Python 3.15')
+        self.assertEqual(runtime_label({'label': 'monty-main'}), '@main')
 
 
 class PairedMeasurementTests(unittest.TestCase):

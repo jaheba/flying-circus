@@ -89,10 +89,10 @@ jobs:
           uv run --no-sync flying-circus \
             -r monty="$PWD/_runtimes/monty/bin/monty" \
             -r monty-main="$PWD/_runtimes/monty-main/bin/monty" \
-            -r cpython-baseline='${{ steps.cpython-baseline.outputs.python-path }}' \
-            -r cpython='${{ steps.cpython.outputs.python-path }}' \
+            -r python3.14='${{ steps.cpython-baseline.outputs.python-path }}' \
+            -r python3.15='${{ steps.cpython.outputs.python-path }}' \
             -r pypy='${{ steps.pypy.outputs.python-path }}' \
-            --samples 20 --memory-samples 3 --startup-samples 50 --warmups 3 --timeout 120 \
+            --samples 10 --memory-samples 3 --startup-samples 10 --warmups 3 --timeout 120 \
             --format html --format markdown --format json --output results/current
       - name: Build Pages site
         env:

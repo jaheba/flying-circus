@@ -127,7 +127,11 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
         document += '<div class="diff-filter"><label><input type="checkbox" id="significant-only"> Significant changes only</label><span id="benchmark-count" role="status" aria-live="polite"></span></div>'
         document += '<details><summary>Comparison evidence</summary><p>The checkbox filters to meaningful changes, failures or compatibility changes. Paired values include both modes for context. All classifications and confidence bounds are retained in diff.json.</p></details>'
     chart_baseline = chart_reference(index)
-    chart_label = index['runtimes'][chart_baseline]['label']
+    chart_label = runtime_label(index['runtimes'][chart_baseline])
+    if not diff:
+        document += '<p><label>Chart baseline <select id="chart-baseline">'
+        document += ''.join(f'<option value="{esc(key)}"' + (' selected' if key == chart_baseline else '') + f'>{esc(runtime_label(index["runtimes"][key]))}</option>' for key in keys)
+        document += '</select></label></p>'
     if startup.get('engines'):
         document += '<section data-diff-section><h2>Process startup · ms</h2><div class="table-wrap"><table class="startup"><thead><tr>'
         document += ''.join(header(key) for key in keys) + '</tr></thead><tbody><tr' + (f' data-significant="{str(any(row["workload"] == "Process startup" for row in visible)).lower()}"' if diff else '') + '>'
@@ -140,7 +144,8 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
         for key in keys:
             text = f'<strong>{values[key]}</strong>' if key in best else values[key]
             chart = inline_chart(startup_ratios.get(('startup', key, 'startup')), startup_extent, 'startup', reference=chart_label) if key != chart_baseline else ''
-            document += f'<td><span class="inline-measurement">{text}{chart}</span></td>'
+            raw = startup['engines'][key].get('median_wall_seconds') if not startup['engines'][key].get('errors') else None
+            document += f'<td data-runtime="{esc(key)}" data-values="{esc(json.dumps([raw]))}" data-metric="startup"><span class="inline-measurement">{text}{chart}</span></td>'
         document += '</tr></tbody></table></div></section>'
     workload_names = list(first['benchmarks'])
     for metric, heading in (('ms', 'Runtime · ms · one-shot / repeated'), ('rss_mib', 'Peak RSS · MiB · one-shot')):
@@ -188,6 +193,8 @@ def render(directory, diff=False, threshold=5, absolute_ms=0.01):
                     if record['status'] != 'ok':
                         reasons.append(mode + ': ' + str(record.get('errors') or record.get('compatibility', {}).get('reason', '')))
                 attrs = f' title="{esc("; ".join(reasons))}"' if reasons else ''
+                raw_values = [runs[mode][key]['benchmarks'][name][field] if runs[mode][key]['benchmarks'][name]['status'] == 'ok' else None for mode in (MODES if paired else ('one-shot',))]
+                attrs += f' data-runtime="{esc(key)}" data-values="{esc(json.dumps(raw_values))}" data-metric="{"runtime" if paired else "RSS"}"'
                 if paired:
                     one = ratios.get(('one-shot', key, name))
                     repeated = ratios.get(('repeated', key, name))
