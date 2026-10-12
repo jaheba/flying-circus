@@ -8,12 +8,8 @@ on:
   workflow_dispatch:
     inputs:
       python_version:
-        description: Newer CPython version
+        description: CPython version
         default: '3.15'
-        type: string
-      python_baseline_version:
-        description: Baseline CPython version
-        default: '3.14'
         type: string
       pypy_version:
         description: PyPy interpreter version
@@ -39,12 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
-      - name: Set up baseline CPython
-        id: cpython-baseline
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ inputs.python_baseline_version || '3.14' }}
-      - name: Set up newer CPython
+      - name: Set up CPython
         id: cpython
         uses: actions/setup-python@v6
         with:
@@ -89,7 +80,6 @@ jobs:
           uv run --no-sync flying-circus \
             -r monty="$PWD/_runtimes/monty/bin/monty" \
             -r monty-main="$PWD/_runtimes/monty-main/bin/monty" \
-            -r python3.14='${{ steps.cpython-baseline.outputs.python-path }}' \
             -r python3.15='${{ steps.cpython.outputs.python-path }}' \
             -r pypy='${{ steps.pypy.outputs.python-path }}' \
             --samples 10 --memory-samples 3 --startup-samples 10 --warmups 3 --timeout 120 \
